@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#241f1a">
+    <meta name="description" content="Gestione di tavoli, sale e prenotazioni del ristorante La Griglia, con funzionamento offline.">
+    <title>La Griglia · Gestione prenotazioni</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="La Griglia">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-plate" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <circle cx="12" cy="12" r="5"></circle>
+                    </svg>
+                </span>
+                <div>
+                    <h1>La Griglia</h1>
+                    <p>Gestione prenotazioni</p>
+                </div>
+            </div>
+
+            <div class="slot">
+                <label class="field-inline">
+                    <span>Data</span>
+                    <input type="date" id="dateInput">
+                </label>
+                <label class="field-inline">
+                    <span>Ora</span>
+                    <select id="timeInput" aria-label="Orario dello slot"></select>
+                </label>
+            </div>
+
+            <div class="topbar-actions">
+                <button type="button" class="btn btn-install" id="installBtn" hidden>Installa app</button>
+                <button type="button" class="btn btn-ghost" id="resetBtn">Ripristina sala</button>
+            </div>
+        </header>
+
+        <section class="summary" aria-label="Riepilogo capienza">
+            <article class="stat stat-total">
+                <span class="stat-label">Posti totali</span>
+                <span class="stat-value" id="totalSeats">0</span>
+                <span class="stat-foot" id="totalFoot">—</span>
+            </article>
+            <article class="stat stat-booked">
+                <span class="stat-label">Posti prenotati</span>
+                <span class="stat-value" id="bookedSeats">0</span>
+                <span class="stat-foot" id="bookedFoot">—</span>
+            </article>
+            <article class="stat stat-free">
+                <span class="stat-label">Posti rimasti</span>
+                <span class="stat-value" id="freeSeats">0</span>
+                <span class="stat-foot" id="freeFoot">—</span>
+            </article>
+        </section>
+
+        <main class="workspace">
+            <section class="panel floor-panel" aria-labelledby="floorTitle">
+                <div class="panel-head">
+                    <div>
+                        <h2 id="floorTitle">Pianta della sala</h2>
+                        <p class="panel-sub">Due sale indipendenti · capienze variabili · i tavoli uniti diventano un unico tavolo.</p>
+                    </div>
+                    <div class="toolbar">
+                        <button type="button" class="btn btn-edit-rooms" id="editRoomsBtn" aria-pressed="false" title="Modifica la disposizione permanente: aggiungi o elimina tavoli, cambia i posti e sposta i tavoli. La configurazione resta anche dopo Ripristina sala.">Modifica sale</button>
+                        <button type="button" class="btn btn-renumber" id="renumberBtn" hidden title="Rinumera i tavoli da T1 in ordine di sala, riga e colonna. Le prenotazioni seguono il proprio tavolo.">Rinumera tavoli</button>
+                        <button type="button" class="btn" id="moveBtn" title="Sposta un tavolo o un gruppo in qualsiasi cella libera o scambialo con un altro tavolo">Sposta tavoli</button>
+                        <button type="button" class="btn" id="combineBtn" title="Unisci i tavoli selezionati nella stessa area">Unisci tavoli</button>
+                        <button type="button" class="btn" id="separateBtn" title="Separa il gruppo selezionato">Separa tavoli</button>
+                    </div>
+                </div>
+
+                <div class="legend" aria-hidden="true">
+                    <span class="legend-item"><i class="dot dot-free"></i>Libero</span>
+                    <span class="legend-item"><i class="dot dot-booked"></i>Prenotato</span>
+                    <span class="legend-item"><i class="dot dot-group"></i>Gruppo unito</span>
+                    <span class="legend-item"><i class="dot dot-selected"></i>Selezionato</span>
+                </div>
+
+                <div class="rooms" id="roomsContainer"></div>
+                <p class="status-line" id="statusLine" aria-live="polite"></p>
+            </section>
+
+            <aside class="side">
+                <section class="panel" aria-labelledby="formTitle">
+                    <h2 id="formTitle">Nuova prenotazione</h2>
+                    <p class="panel-sub slot-label" id="slotLabel">—</p>
+
+                    <form id="reservationForm" novalidate>
+                        <div class="field-row">
+                            <div class="field">
+                                <label for="formDate">Data</label>
+                                <input type="date" id="formDate" aria-describedby="formDateHint">
+                                <p class="field-error" id="formDateError"></p>
+                            </div>
+                            <div class="field">
+                                <label for="formTime">Ora</label>
+                                <select id="formTime" aria-describedby="formTimeHint"></select>
+                                <p class="field-error" id="formTimeError"></p>
+                            </div>
+                        </div>
+                        <p class="form-hint" id="formDateHint">Scegli data e orario dai menu, oppure usa i selettori in alto.</p>
+
+                        <div class="target" id="targetInfo" aria-live="polite"></div>
+
+                        <div class="field">
+                            <label for="guestName">Nome e cognome</label>
+                            <input type="text" id="guestName" autocomplete="name" placeholder="Es. Mario Rossi">
+                            <p class="field-error" id="guestNameError"></p>
+                        </div>
+
+                        <div class="field">
+                            <label for="guestPhone">Telefono <span class="optional">(facoltativo)</span></label>
+                            <input type="tel" id="guestPhone" autocomplete="tel" placeholder="Es. 333 1234567">
+                            <p class="field-error" id="guestPhoneError"></p>
+                        </div>
+
+                        <div class="field">
+                            <label for="guestCount">Numero di ospiti</label>
+                            <input type="number" id="guestCount" min="1" step="1" inputmode="numeric" placeholder="Quanti ospiti?">
+                            <p class="field-error" id="guestCountError"></p>
+                        </div>
+
+                        <div class="field">
+                            <label for="guestNote">Note <span class="optional">(facoltative)</span></label>
+                            <input type="text" id="guestNote" placeholder="Allergie, seggiolone, compleanno…">
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary btn-block" id="createBtn" aria-disabled="true">
+                                Crea prenotazione
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-block" id="cancelEditBtn" hidden>
+                                Annulla modifica
+                            </button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="panel" aria-labelledby="listTitle">
+                    <div class="panel-head tight">
+                        <h2 id="listTitle">Prenotazioni</h2>
+                        <span class="badge" id="reservationCount">0</span>
+                    </div>
+                    <p class="panel-sub">Prenotazioni attive per lo slot selezionato.</p>
+                    <div class="reservation-list" id="reservationList"></div>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
+
+    <noscript>
+        <p class="noscript">Questa applicazione richiede JavaScript per funzionare.</p>
+    </noscript>
+
+    <script src="app.js"></script>
+</body>
+</html>
