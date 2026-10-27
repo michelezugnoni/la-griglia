@@ -17,6 +17,15 @@
 </head>
 <body>
     <div class="app">
+        <header class="print-header" id="printHeader" aria-hidden="true">
+            <div class="print-brand">
+                <span class="print-title">La Griglia</span>
+                <span class="print-doc" id="printDocTitle">Pianta della sala</span>
+            </div>
+            <p class="print-slot" id="printSlotLine">—</p>
+            <p class="print-stats" id="printStatsLine">—</p>
+        </header>
+
         <header class="topbar">
             <div class="brand">
                 <span class="brand-plate" aria-hidden="true">
@@ -44,6 +53,16 @@
 
             <div class="topbar-actions">
                 <button type="button" class="btn btn-install" id="installBtn" hidden>Installa app</button>
+                <button type="button" class="btn btn-print" id="printBtn" title="Stampa la pianta della sala con le prenotazioni oppure solo l'elenco delle prenotazioni">
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                        stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M7 9V4h10v5"></path>
+                        <rect x="4" y="9" width="16" height="7" rx="1.8"></rect>
+                        <path d="M7 13h10v7H7z"></path>
+                        <circle cx="17.2" cy="11.6" r=".9" fill="currentColor" stroke="none"></circle>
+                    </svg>
+                    Stampa
+                </button>
                 <button type="button" class="btn btn-ghost" id="resetBtn">Ripristina sala</button>
             </div>
         </header>
@@ -66,8 +85,44 @@
             </article>
         </section>
 
-        <main class="workspace">
-            <section class="panel floor-panel" aria-labelledby="floorTitle">
+        <nav class="tabbar" id="tabBar" role="tablist" aria-label="Sezioni dell'app">
+            <button type="button" class="tab" id="tabNuova" role="tab" aria-selected="false"
+                aria-controls="panelNuova" data-tab="nuova" tabindex="-1">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8.4"></circle>
+                    <path d="M12 8.4v7.2M8.4 12h7.2"></path>
+                </svg>
+                <span class="tab-text">Nuova</span>
+                <span class="tab-dot" id="tabSelectionDot" hidden aria-hidden="true"></span>
+            </button>
+            <button type="button" class="tab is-active" id="tabSala" role="tab" aria-selected="true"
+                aria-controls="panelSala" data-tab="sala" tabindex="0">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="3" width="7" height="7" rx="1.6"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1.6"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1.6"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1.6"></rect>
+                </svg>
+                <span class="tab-text">Sala</span>
+            </button>
+            <button type="button" class="tab" id="tabPrenotazioni" role="tab" aria-selected="false"
+                aria-controls="panelPrenotazioni" data-tab="prenotazioni" tabindex="-1">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M8 6.5h11M8 12h11M8 17.5h11"></path>
+                    <circle cx="4.6" cy="6.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                    <circle cx="4.6" cy="12" r="1.1" fill="currentColor" stroke="none"></circle>
+                    <circle cx="4.6" cy="17.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                </svg>
+                <span class="tab-text">Prenotazioni</span>
+                <span class="tab-badge" id="tabReservationCount" hidden>0</span>
+            </button>
+        </nav>
+
+        <main class="workspace" id="workspace">
+            <section class="panel floor-panel" id="panelSala" role="tabpanel" aria-labelledby="floorTitle">
                 <div class="panel-head">
                     <div>
                         <h2 id="floorTitle">Pianta della sala</h2>
@@ -93,72 +148,108 @@
                 <p class="status-line" id="statusLine" aria-live="polite"></p>
             </section>
 
-            <aside class="side">
-                <section class="panel" aria-labelledby="formTitle">
-                    <h2 id="formTitle">Nuova prenotazione</h2>
-                    <p class="panel-sub slot-label" id="slotLabel">—</p>
+            <div class="side">
+                <section class="panel form-panel" id="panelNuova" role="tabpanel" aria-labelledby="formTitle">
+                <h2 id="formTitle">Nuova prenotazione</h2>
+                <p class="panel-sub slot-label" id="slotLabel">—</p>
 
-                    <form id="reservationForm" novalidate>
-                        <div class="field-row">
-                            <div class="field">
-                                <label for="formDate">Data</label>
-                                <input type="date" id="formDate" aria-describedby="formDateHint">
-                                <p class="field-error" id="formDateError"></p>
-                            </div>
-                            <div class="field">
-                                <label for="formTime">Ora</label>
-                                <select id="formTime" aria-describedby="formTimeHint"></select>
-                                <p class="field-error" id="formTimeError"></p>
-                            </div>
-                        </div>
-                        <p class="form-hint" id="formDateHint">Scegli data e orario dai menu, oppure usa i selettori in alto.</p>
-
-                        <div class="target" id="targetInfo" aria-live="polite"></div>
-
+                <form id="reservationForm" novalidate>
+                    <div class="field-row">
                         <div class="field">
-                            <label for="guestName">Nome e cognome</label>
-                            <input type="text" id="guestName" autocomplete="name" placeholder="Es. Mario Rossi">
-                            <p class="field-error" id="guestNameError"></p>
+                            <label for="formDate">Data</label>
+                            <input type="date" id="formDate" aria-describedby="formDateHint">
+                            <p class="field-error" id="formDateError"></p>
                         </div>
-
                         <div class="field">
-                            <label for="guestPhone">Telefono <span class="optional">(facoltativo)</span></label>
-                            <input type="tel" id="guestPhone" autocomplete="tel" placeholder="Es. 333 1234567">
-                            <p class="field-error" id="guestPhoneError"></p>
+                            <label for="formTime">Ora</label>
+                            <select id="formTime" aria-describedby="formTimeHint"></select>
+                            <p class="field-error" id="formTimeError"></p>
                         </div>
-
-                        <div class="field">
-                            <label for="guestCount">Numero di ospiti</label>
-                            <input type="number" id="guestCount" min="1" step="1" inputmode="numeric" placeholder="Quanti ospiti?">
-                            <p class="field-error" id="guestCountError"></p>
-                        </div>
-
-                        <div class="field">
-                            <label for="guestNote">Note <span class="optional">(facoltative)</span></label>
-                            <input type="text" id="guestNote" placeholder="Allergie, seggiolone, compleanno…">
-                        </div>
-
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary btn-block" id="createBtn" aria-disabled="true">
-                                Crea prenotazione
-                            </button>
-                            <button type="button" class="btn btn-ghost btn-block" id="cancelEditBtn" hidden>
-                                Annulla modifica
-                            </button>
-                        </div>
-                    </form>
-                </section>
-
-                <section class="panel" aria-labelledby="listTitle">
-                    <div class="panel-head tight">
-                        <h2 id="listTitle">Prenotazioni</h2>
-                        <span class="badge" id="reservationCount">0</span>
                     </div>
-                    <p class="panel-sub">Prenotazioni attive per lo slot selezionato.</p>
-                    <div class="reservation-list" id="reservationList"></div>
-                </section>
-            </aside>
+                    <p class="form-hint" id="formDateHint">Scegli data e orario dai menu, oppure usa i selettori in alto.</p>
+
+                    <div class="target" id="targetInfo" aria-live="polite"></div>
+
+                    <div class="field">
+                        <label for="guestName">Nome e cognome</label>
+                        <input type="text" id="guestName" autocomplete="name" placeholder="Es. Mario Rossi">
+                        <p class="field-error" id="guestNameError"></p>
+                    </div>
+
+                    <div class="field">
+                        <label for="guestPhone">Telefono <span class="optional">(facoltativo)</span></label>
+                        <input type="tel" id="guestPhone" autocomplete="tel" placeholder="Es. 333 1234567">
+                        <p class="field-error" id="guestPhoneError"></p>
+                    </div>
+
+                    <div class="field">
+                        <label for="guestCount">Numero di ospiti</label>
+                        <input type="number" id="guestCount" min="1" step="1" inputmode="numeric" placeholder="Quanti ospiti?">
+                        <p class="field-error" id="guestCountError"></p>
+                    </div>
+
+                    <div class="field">
+                        <label for="guestNote">Note <span class="optional">(facoltative)</span></label>
+                        <input type="text" id="guestNote" placeholder="Allergie, seggiolone, compleanno…">
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-block" id="createBtn" aria-disabled="true">
+                            Crea prenotazione
+                        </button>
+                        <button type="button" class="btn btn-ghost btn-block" id="cancelEditBtn" hidden>
+                            Annulla modifica
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel list-panel" id="panelPrenotazioni" role="tabpanel" aria-labelledby="listTitle">
+                <div class="panel-head tight">
+                    <h2 id="listTitle">Prenotazioni</h2>
+                    <span class="badge" id="reservationCount">0</span>
+                </div>
+                <p class="panel-sub">Prenotazioni attive per lo slot selezionato.</p>
+                <div class="reservation-list" id="reservationList"></div>
+            </section>
+            </div>
         </main>
+    </div>
+
+    <div class="print-dialog" id="printDialog" hidden>
+        <div class="print-backdrop" data-print-close></div>
+        <div class="print-sheet" role="dialog" aria-modal="true" aria-labelledby="printTitle"
+            aria-describedby="printSub">
+            <h2 id="printTitle">Cosa vuoi stampare?</h2>
+            <p class="print-sheet-sub" id="printSub">Slot attivo: <span id="printSlotLabel">—</span></p>
+            <div class="print-options">
+                <button type="button" class="print-option" data-print-mode="plan">
+                    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="7" height="7" rx="1.6"></rect>
+                        <rect x="14" y="3" width="7" height="7" rx="1.6"></rect>
+                        <rect x="3" y="14" width="7" height="7" rx="1.6"></rect>
+                        <rect x="14" y="14" width="7" height="7" rx="1.6"></rect>
+                    </svg>
+                    <span class="print-option-title">Pianta della sala</span>
+                    <span class="print-option-sub">Tavoli, gruppi e nomi delle prenotazioni dello slot selezionato.</span>
+                </button>
+                <button type="button" class="print-option" data-print-mode="reservations">
+                    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M9 6.5h11M9 12h11M9 17.5h11"></path>
+                        <circle cx="4.8" cy="6.5" r="1.3" fill="currentColor" stroke="none"></circle>
+                        <circle cx="4.8" cy="12" r="1.3" fill="currentColor" stroke="none"></circle>
+                        <circle cx="4.8" cy="17.5" r="1.3" fill="currentColor" stroke="none"></circle>
+                    </svg>
+                    <span class="print-option-title">Solo prenotazioni</span>
+                    <span class="print-option-sub">Elenco con ospiti, tavolo assegnato, telefono e note.</span>
+                </button>
+            </div>
+            <div class="print-dialog-actions">
+                <button type="button" class="btn btn-ghost btn-block" data-print-close>Annulla</button>
+            </div>
+        </div>
     </div>
 
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>

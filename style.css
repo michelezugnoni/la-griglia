@@ -312,6 +312,20 @@ h1, h2 {
     align-items: start;
 }
 
+.floor-panel {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+}
+
+.side {
+    display: grid;
+    gap: 16px;
+    align-content: start;
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+}
+
 .panel {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -667,12 +681,13 @@ h1, h2 {
     transition: color .2s ease;
 }
 
-/* ---------- Side panel ---------- */
+/* ---------- Mobile tab bar ---------- */
 
-.side {
-    display: grid;
-    gap: 16px;
+.tabbar {
+    display: none;
 }
+
+/* ---------- Side panel ---------- */
 
 .slot-label {
     color: var(--accent);
@@ -1330,12 +1345,20 @@ form {
 
 /* ---------- Responsive ---------- */
 
-@media (max-width: 1180px) {
+@media (max-width: 1180px) and (min-width: 901px) {
     .workspace {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+            "floor floor"
+            "side side";
+    }
+
+    .floor-panel {
+        grid-area: floor;
     }
 
     .side {
+        grid-area: side;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         align-items: start;
     }
@@ -1343,6 +1366,162 @@ form {
 
 @media (max-width: 900px) {
     body {
+        padding: 12px;
+    }
+
+    .app {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .topbar,
+    .topbar-actions {
+        display: contents;
+    }
+
+    .summary {
+        order: 1;
+    }
+
+    .workspace {
+        order: 3;
+    }
+
+    #printBtn {
+        order: 4;
+        width: 100%;
+        margin-top: 22px;
+        margin-bottom: 14px;
+    }
+
+    .brand {
+        order: 5;
+        width: 100%;
+        margin-top: 0;
+        margin-right: 0;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+    }
+
+    .slot {
+        order: 6;
+        width: 100%;
+        margin-top: 12px;
+    }
+
+    #resetBtn {
+        order: 7;
+        width: 100%;
+        margin-top: 12px;
+    }
+
+    #installBtn {
+        order: 8;
+        width: 100%;
+        margin-top: 8px;
+    }
+
+    .tabbar {
+        position: sticky;
+        top: env(safe-area-inset-top, 0px);
+        z-index: 30;
+        order: 2;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 5px;
+        margin-bottom: 12px;
+        padding: 6px;
+        background: rgba(255, 253, 249, .94);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(10px);
+    }
+
+    .tab {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        min-height: 52px;
+        padding: 6px 4px;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .02em;
+        color: var(--muted);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .tab svg {
+        flex: none;
+    }
+
+    .tab.is-active {
+        color: var(--accent-strong);
+        background: var(--accent-soft);
+        border-color: #f1cbbb;
+    }
+
+    .tab-badge {
+        position: absolute;
+        top: 4px;
+        right: 5px;
+        min-width: 19px;
+        height: 19px;
+        padding: 0 5px;
+        font-size: 10.5px;
+        font-weight: 800;
+        line-height: 19px;
+        text-align: center;
+        color: #fffaf4;
+        background: var(--accent);
+        border-radius: 999px;
+    }
+
+    .tab-badge[hidden] {
+        display: none;
+    }
+
+    .tab-dot {
+        position: absolute;
+        top: 7px;
+        right: 9px;
+        width: 8px;
+        height: 8px;
+        background: var(--select);
+        border: 2px solid var(--surface);
+        border-radius: 50%;
+    }
+
+    .tab-dot[hidden] {
+        display: none;
+    }
+
+    .workspace {
+        display: block;
+    }
+
+    .side {
+        display: contents;
+    }
+
+    .workspace .panel {
+        display: none;
+    }
+
+    .workspace .panel.is-active {
+        display: block;
+        animation: panel-in .18s ease both;
+    }
+
+    .panel {
         padding: 14px;
     }
 
@@ -1351,14 +1530,52 @@ form {
     }
 
     .room-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-rows: none;
+        grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
+        grid-template-rows: repeat(var(--rows, 9), minmax(52px, auto));
+        gap: 5px;
+        padding: 8px;
     }
 
-    .room-grid .entity,
-    .room-grid .floor-gap {
-        grid-column: auto !important;
-        grid-row: auto !important;
+    .entity,
+    .floor-gap {
+        min-height: 52px;
+    }
+
+    .entity {
+        padding: 3px 2px;
+        border-radius: 9px;
+    }
+
+    .entity-tag {
+        display: none;
+    }
+
+    .entity-group .entity-tag {
+        display: block;
+        font-size: 8px;
+        letter-spacing: .04em;
+    }
+
+    .entity-group .entity-members {
+        display: none;
+    }
+
+    .entity-name {
+        font-size: 13px;
+    }
+
+    .entity-seats {
+        font-size: 9.5px;
+    }
+
+    .entity-note {
+        font-size: 8.5px;
+    }
+
+    .legend {
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 11px;
     }
 
     .brand {
@@ -1366,15 +1583,40 @@ form {
     }
 
     .topbar {
-        gap: 14px;
+        gap: 12px;
+    }
+
+    .field input,
+    .field select,
+    .field-inline input,
+    .field-inline select {
+        font-size: 16px;
+    }
+
+    .toolbar .btn,
+    .form-actions .btn,
+    .topbar-actions .btn,
+    .reservation .btn {
+        min-height: 44px;
+    }
+
+    .panel-head {
+        gap: 10px;
+    }
+}
+
+@keyframes panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
     }
 }
 
 @media (max-width: 720px) {
-    .side {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .summary {
         gap: 10px;
     }
@@ -1387,32 +1629,17 @@ form {
         font-size: 27px;
     }
 
-    .room-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        grid-auto-rows: minmax(88px, auto);
-        gap: 8px;
-        padding: 10px;
-    }
-
-    .floor-gap,
-    .entity {
-        min-height: 88px;
-    }
-
-    .entity {
-        padding: 8px 6px;
-    }
-
-    .entity-note {
-        font-size: 9px;
-    }
-
     .room {
         padding: 9px;
     }
 
     .panel-head {
         flex-direction: column;
+    }
+
+    .panel-head.tight {
+        flex-direction: row;
+        align-items: center;
     }
 
     .toolbar {
@@ -1442,10 +1669,6 @@ form {
 
     .stat-foot {
         display: none;
-    }
-
-    .room-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .field-row {
@@ -1479,6 +1702,26 @@ form {
         right: 12px;
         bottom: 12px;
         width: calc(100vw - 24px);
+    }
+}
+
+@media (max-width: 420px) {
+    .tab {
+        font-size: 10.5px;
+    }
+
+    .room-grid {
+        gap: 4px;
+        padding: 6px;
+    }
+
+    .entity-name {
+        font-size: 12px;
+    }
+
+    .legend {
+        gap: 8px;
+        font-size: 10.5px;
     }
 }
 
@@ -1525,5 +1768,503 @@ body {
 @media (display-mode: standalone) {
     body {
         min-height: 100dvh;
+    }
+}
+
+/* ---------- Stampa ---------- */
+
+.btn-print {
+    color: var(--accent-strong);
+    background: var(--accent-soft);
+    border-color: #f1cbbb;
+}
+
+.btn-print:hover {
+    background: #fbe7de;
+}
+
+.btn-print svg {
+    flex: none;
+}
+
+.print-header {
+    display: none;
+}
+
+.print-dialog[hidden] {
+    display: none;
+}
+
+body.print-dialog-open {
+    overflow: hidden;
+}
+
+.print-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+}
+
+.print-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(36, 31, 26, .55);
+    backdrop-filter: blur(2px);
+}
+
+.print-sheet {
+    position: relative;
+    z-index: 1;
+    width: min(430px, 100%);
+    max-height: calc(100dvh - 36px);
+    padding: 22px;
+    overflow: auto;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 0 26px 60px rgba(36, 31, 26, .38);
+    animation: sheet-in .18s ease both;
+}
+
+.print-sheet h2 {
+    font-size: 19px;
+    line-height: 1.2;
+}
+
+.print-sheet-sub {
+    margin-top: 4px;
+    font-size: 12.5px;
+    color: var(--muted);
+}
+
+.print-options {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.print-option {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    align-items: center;
+    width: 100%;
+    padding: 14px;
+    font: inherit;
+    text-align: left;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    cursor: pointer;
+    appearance: none;
+    transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
+}
+
+.print-option:hover {
+    background: #fff6f1;
+    border-color: #e7b7a4;
+}
+
+.print-option:active {
+    transform: translateY(1px);
+}
+
+.print-option:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.print-option svg {
+    grid-row: 1 / span 2;
+    width: 30px;
+    height: 30px;
+    color: var(--accent);
+}
+
+.print-option-title {
+    font-size: 14.5px;
+    font-weight: 750;
+}
+
+.print-option-sub {
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--muted);
+}
+
+.print-dialog-actions {
+    margin-top: 14px;
+}
+
+@keyframes sheet-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(.985);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .print-dialog {
+        align-items: end;
+        padding: 0;
+    }
+
+    .print-sheet {
+        width: 100%;
+        max-height: 88dvh;
+        padding: 20px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+        border-radius: 20px 20px 0 0;
+        animation-name: sheet-up;
+    }
+
+    .print-option {
+        padding: 13px;
+    }
+}
+
+@keyframes sheet-up {
+    from {
+        opacity: .6;
+        transform: translateY(24px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 12mm;
+    }
+
+    @page plan {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+
+    html,
+    body {
+        background: #fff !important;
+    }
+
+    body {
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .topbar,
+    .summary,
+    .tabbar,
+    .toast-stack,
+    .print-dialog,
+    .noscript {
+        display: none !important;
+    }
+
+    .app {
+        max-width: none;
+        padding: 0;
+    }
+
+    .print-header {
+        display: block;
+        margin-bottom: 5mm;
+        padding-bottom: 2.5mm;
+        border-bottom: 1.4pt solid #241f1a;
+    }
+
+    .print-brand {
+        display: flex;
+        align-items: baseline;
+        gap: 4mm;
+        flex-wrap: wrap;
+    }
+
+    .print-title {
+        font-size: 15pt;
+        font-weight: 800;
+        letter-spacing: -.01em;
+    }
+
+    .print-doc {
+        font-size: 10pt;
+        font-weight: 750;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        color: #a53c18;
+    }
+
+    .print-slot {
+        margin-top: 1.5mm;
+        font-size: 10pt;
+        font-weight: 700;
+    }
+
+    .print-stats {
+        margin-top: .8mm;
+        font-size: 8.5pt;
+        color: #5a5248;
+    }
+
+    .workspace {
+        display: block !important;
+    }
+
+    .workspace .panel {
+        display: none !important;
+        padding: 0 !important;
+        background: #fff !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+
+    body.print-plan #panelSala,
+    body.print-reservations #panelPrenotazioni {
+        display: block !important;
+    }
+
+    body.print-plan .side {
+        display: none !important;
+    }
+
+    body.print-reservations .side {
+        display: block !important;
+    }
+
+    /* Pianta della sala */
+
+    body.print-plan {
+        page: plan;
+    }
+
+    body.print-plan #panelSala .panel-head,
+    body.print-plan .status-line {
+        display: none !important;
+    }
+
+    body.print-plan .legend {
+        display: flex;
+        gap: 4mm;
+        margin: 0 0 3mm;
+        font-size: 8pt;
+        color: #241f1a;
+    }
+
+    body.print-plan .legend-item {
+        gap: 1.5mm;
+    }
+
+    body.print-plan .rooms {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 5mm !important;
+        margin: 0;
+    }
+
+    body.print-plan .room {
+        padding: 0 !important;
+        background: #fff !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+    }
+
+    body.print-plan .room-head {
+        padding: 0 0 2mm !important;
+    }
+
+    body.print-plan .room-name {
+        font-size: 10.5pt;
+        color: #241f1a;
+    }
+
+    body.print-plan .room-meta {
+        font-size: 8pt;
+        color: #5a5248;
+    }
+
+    body.print-plan .room-hint,
+    body.print-plan .room-tools {
+        display: none !important;
+    }
+
+    body.print-plan .room-grid {
+        grid-template-rows: repeat(var(--rows, 9), minmax(13mm, auto)) !important;
+        gap: 1.4mm !important;
+        padding: 2mm !important;
+        background: #f7f3ec !important;
+        border: 1px solid #c9bdae !important;
+        border-radius: 2mm !important;
+        box-shadow: none !important;
+    }
+
+    body.print-plan .entity,
+    body.print-plan .floor-gap {
+        min-height: 0 !important;
+        border-radius: 1.6mm !important;
+    }
+
+    body.print-plan .entity {
+        gap: .4mm;
+        padding: 1.6mm 1mm !important;
+        color: #241f1a !important;
+        background: #fff !important;
+        border: 1px solid #b9ac9c !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+    }
+
+    body.print-plan .entity::after {
+        display: none !important;
+    }
+
+    body.print-plan .entity.is-free {
+        background: #f4f1ea !important;
+        border-color: #b9ac9c !important;
+    }
+
+    body.print-plan .entity.is-booked {
+        background: #fdeae7 !important;
+        border-color: #b83c32 !important;
+        border-width: 1.4pt !important;
+    }
+
+    body.print-plan .entity.entity-group {
+        background: #f1ecfd !important;
+        border-color: #6d28d9 !important;
+    }
+
+    body.print-plan .entity.is-selected,
+    body.print-plan .entity.is-picked {
+        outline: 0 !important;
+    }
+
+    body.print-plan .entity-tag {
+        display: block !important;
+        font-size: 5.5pt;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: #6b6053;
+    }
+
+    body.print-plan .entity-group .entity-tag {
+        font-size: 5.5pt;
+    }
+
+    body.print-plan .entity-name {
+        font-size: 12pt;
+        font-weight: 800;
+        line-height: 1.05;
+        color: #241f1a;
+    }
+
+    body.print-plan .entity-group .entity-name {
+        font-size: 10.5pt;
+    }
+
+    body.print-plan .entity-seats {
+        font-size: 7pt;
+        color: #4d463d;
+    }
+
+    body.print-plan .entity-members,
+    body.print-plan .entity-group .entity-members {
+        display: flex !important;
+        gap: .8mm;
+        margin: 0;
+    }
+
+    body.print-plan .chip {
+        padding: 0 1.2mm;
+        font-size: 5.5pt;
+        color: #3b2b6b;
+        background: #e3d9fb !important;
+    }
+
+    body.print-plan .entity-note {
+        display: block;
+        max-width: 100%;
+        font-size: 6.8pt;
+        line-height: 1.15;
+        color: #241f1a;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
+    }
+
+    body.print-plan .is-booked .entity-note {
+        font-weight: 750;
+        color: #8d241d;
+    }
+
+    /* Solo prenotazioni */
+
+    body.print-reservations #panelPrenotazioni .panel-head,
+    body.print-reservations #panelPrenotazioni .panel-sub {
+        display: none !important;
+    }
+
+    body.print-reservations .reservation-list {
+        display: grid;
+        gap: 2.6mm;
+        margin: 0;
+    }
+
+    body.print-reservations .reservation {
+        display: block;
+        padding: 2.6mm 3mm !important;
+        background: #fff !important;
+        border: 1px solid #c9bdae !important;
+        border-left: 3pt solid #c9bdae !important;
+        border-radius: 1.6mm !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+    }
+
+    body.print-reservations .reservation.is-unassigned {
+        border-left-color: #b83c32 !important;
+        background: #fdf6f5 !important;
+    }
+
+    body.print-reservations .reservation-actions {
+        display: none !important;
+    }
+
+    body.print-reservations .reservation-name {
+        font-size: 11pt;
+        white-space: normal;
+        overflow: visible;
+    }
+
+    body.print-reservations .reservation-meta {
+        font-size: 9pt;
+        color: #3f382f;
+    }
+
+    body.print-reservations .reservation-note {
+        font-size: 8.5pt;
+        font-style: italic;
+        color: #6b4c1f;
+    }
+
+    body.print-reservations .empty-state {
+        padding: 8mm;
+        font-size: 10pt;
+        border: 1px dashed #b9ac9c;
     }
 }

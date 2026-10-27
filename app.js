@@ -33,6 +33,12 @@
     let deleteTableTimer = null;
     let renumberTimer = null;
     let installPrompt = null;
+    let activeTab = 'sala';
+    let touchStart = null;
+    let lastFocusBeforePrint = null;
+
+    const TAB_IDS = ['nuova', 'sala', 'prenotazioni'];
+    const MOBILE_QUERY = window.matchMedia('(max-width: 900px)');
 
     const els = {};
 
@@ -92,6 +98,234 @@
         });
     }
 
+    /* ---------- Navigazione a tab (mobile) ---------- */
+
+    function isMobileLayout() {
+        return MOBILE_QUERY.matches;
+    }
+
+    function setTab(tab, options) {
+        if (TAB_IDS.indexOf(tab) === -1) return;
+        activeTab = tab;
+
+        TAB_IDS.forEach(function (id) {
+            const button = els.tabs[id];
+            const panel = els.panels[id];
+            const active = id === tab;
+
+            if (button) {
+                button.classList.toggle('is-active', active);
+                button.setAttribute('aria-selected', active ? 'true' : 'false');
+                button.tabIndex = active ? 0 : -1;
+            }
+
+            if (panel) {
+                panel.classList.toggle('is-active', active);
+            }
+        });
+
+        if (isMobileLayout() && (!options || options.scroll !== false)) {
+            window.scrollTo({ top: 0, behavior: 'auto' });
+        }
+    }
+
+    function bindTabs() {
+        if (!els.tabBar) return;
+
+        els.tabBar.addEventListener('click', function (event) {
+            const button = event.target.closest('[data-tab]');
+            if (!button) return;
+            setTab(button.dataset.tab);
+        });
+
+        els.tabBar.addEventListener('keydown', function (event) {
+            const index = TAB_IDS.indexOf(activeTab);
+            let next = null;
+
+            if (event.key === 'ArrowRight') next = (index + 1) % TAB_IDS.length;
+            else if (event.key === 'ArrowLeft') next = (index - 1 + TAB_IDS.length) % TAB_IDS.length;
+            else if (event.key === 'Home') next = 0;
+            else if (event.key === 'End') next = TAB_IDS.length - 1;
+
+            if (next === null) return;
+
+            event.preventDefault();
+            setTab(TAB_IDS[next]);
+            if (els.tabs[TAB_IDS[next]]) els.tabs[TAB_IDS[next]].focus();
+        });
+
+        if (!els.workspace) return;
+
+        els.workspace.addEventListener('touchstart', function (event) {
+            if (!isMobileLayout() || event.touches.length !== 1) {
+                touchStart = null;
+                return;
+            }
+            touchStart = {
+                x: event.touches[0].clientX,
+                y: event.touches[0].clientY
+            };
+        }, { passive: true });
+
+        els.workspace.addEventListener('touchend', function (event) {
+            if (!touchStart || !isMobileLayout()) {
+                touchStart = null;
+                return;
+            }
+
+            const touch = event.changedTouches[0];
+            const dx = touch.clientX - touchStart.x;
+            const dy = touch.clientY - touchStart.y;
+            touchStart = null;
+
+            if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+
+            const index = TAB_IDS.indexOf(activeTab);
+            const next = dx < 0 ? index + 1 : index - 1;
+            if (next >= 0 && next < TAB_IDS.length) setTab(TAB_IDS[next]);
+        }, { passive: true });
+    }
+
+    /* ---------- Stampa ---------- */
+
+    const PRINT_LABELS = {
+        plan: 'Pianta della sala',
+        reservations: 'Solo prenotazioni'
+    };
+
+    function currentSlotLabel() {
+        const dateIso = els.date.value || todayIso();
+        const time = els.time.value || '20:00';
+        return formatDate(dateIso) + ' · ' + time;
+    }
+
+    function openPrintDialog() {
+        if (!els.printDialog) return;
+
+        lastFocusBeforePrint = document.activeElement;
+        document.body.classList.remove('print-plan', 'print-reservations');
+
+        if (els.printSlotLabel) {
+            els.printSlotLabel.textContent = currentSlotLabel();
+        }
+
+        els.printDialog.hidden = false;
+        document.body.classList.add('print-dialog-open');
+
+        const first = els.printDialog.querySelector('[data-print-mode]');
+        if (first) first.focus();
+    }
+
+    function closePrintDialog() {
+        if (!els.printDialog || els.printDialog.hidden) return;
+
+        els.printDialog.hidden = true;
+        document.body.classList.remove('print-dialog-open');
+
+        if (lastFocusBeforePrint && document.contains(lastFocusBeforePrint)) {
+            lastFocusBeforePrint.focus();
+        }
+        lastFocusBeforePrint = null;
+    }
+
+    function updatePrintHeader(mode) {
+        if (!els.printHeader) return;
+
+        if (els.printDocTitle) {
+            els.printDocTitle.textContent = PRINT_LABELS[mode] || 'Stampa';
+        }
+        if (els.printSlotLine) {
+            els.printSlotLine.textContent = 'Slot: ' + currentSlotLabel();
+        }
+        if (els.printStatsLine) {
+            const parts = [
+                els.totalSeats.textContent + ' posti totali',
+                els.bookedSeats.textContent + ' prenotati',
+                els.freeSeats.textContent + ' liberi'
+            ];
+            if (els.reservationCount) {
+                const count = Number(els.reservationCount.textContent) || 0;
+                parts.push(count + (count === 1 ? ' prenotazione' : ' prenotazioni'));
+            }
+            els.printStatsLine.textContent = parts.join(' · ');
+        }
+    }
+
+    function runPrint(mode) {
+        if (!PRINT_LABELS[mode]) return;
+
+        closePrintDialog();
+        updatePrintHeader(mode);
+
+        document.body.classList.remove('print-plan', 'print-reservations');
+        document.body.classList.add(mode === 'plan' ? 'print-plan' : 'print-reservations');
+
+        window.print();
+    }
+
+    function bindPrint() {
+        if (els.printBtn) {
+            els.printBtn.addEventListener('click', openPrintDialog);
+        }
+
+        if (!els.printDialog) return;
+
+        els.printDialog.addEventListener('click', function (event) {
+            if (event.target.closest('[data-print-close]')) {
+                event.preventDefault();
+                closePrintDialog();
+                return;
+            }
+
+            const option = event.target.closest('[data-print-mode]');
+            if (option) {
+                runPrint(option.dataset.printMode);
+            }
+        });
+
+        els.printDialog.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closePrintDialog();
+                return;
+            }
+
+            if (event.key !== 'Tab') return;
+
+            const focusables = Array.prototype.filter.call(
+                els.printDialog.querySelectorAll('[data-print-mode], [data-print-close]'),
+                function (node) { return node.offsetParent !== null; }
+            );
+            if (focusables.length === 0) return;
+
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+
+        window.addEventListener('afterprint', function () {
+            document.body.classList.remove('print-plan', 'print-reservations');
+        });
+
+        window.addEventListener('beforeprint', function () {
+            if (document.body.classList.contains('print-plan') ||
+                document.body.classList.contains('print-reservations')) {
+                return;
+            }
+
+            const mode = activeTab === 'prenotazioni' ? 'reservations' : 'plan';
+            updatePrintHeader(mode);
+            document.body.classList.add(mode === 'plan' ? 'print-plan' : 'print-reservations');
+        });
+    }
+
     /* ---------- Init ---------- */
 
     function init() {
@@ -103,8 +337,11 @@
         }
         setDefaultSlot();
         bindEvents();
+        bindTabs();
+        bindPrint();
         syncSlotFields();
         renderAll();
+        setTab(activeTab, { scroll: false });
         syncInstallButton();
         registerServiceWorker();
     }
@@ -126,6 +363,27 @@
         els.renumberBtn = document.getElementById('renumberBtn');
         els.resetBtn = document.getElementById('resetBtn');
         els.installBtn = document.getElementById('installBtn');
+        els.workspace = document.getElementById('workspace');
+        els.tabBar = document.getElementById('tabBar');
+        els.tabs = {
+            sala: document.getElementById('tabSala'),
+            nuova: document.getElementById('tabNuova'),
+            prenotazioni: document.getElementById('tabPrenotazioni')
+        };
+        els.panels = {
+            sala: document.getElementById('panelSala'),
+            nuova: document.getElementById('panelNuova'),
+            prenotazioni: document.getElementById('panelPrenotazioni')
+        };
+        els.tabReservationCount = document.getElementById('tabReservationCount');
+        els.tabSelectionDot = document.getElementById('tabSelectionDot');
+        els.printBtn = document.getElementById('printBtn');
+        els.printDialog = document.getElementById('printDialog');
+        els.printSlotLabel = document.getElementById('printSlotLabel');
+        els.printHeader = document.getElementById('printHeader');
+        els.printDocTitle = document.getElementById('printDocTitle');
+        els.printSlotLine = document.getElementById('printSlotLine');
+        els.printStatsLine = document.getElementById('printStatsLine');
         els.statusLine = document.getElementById('statusLine');
         els.slotLabel = document.getElementById('slotLabel');
         els.targetInfo = document.getElementById('targetInfo');
@@ -951,6 +1209,10 @@
 
         els.moveBtn.classList.toggle('is-active', moveMode);
         els.moveBtn.textContent = moveMode ? 'Termina spostamento' : 'Sposta tavoli';
+
+        if (els.tabSelectionDot) {
+            els.tabSelectionDot.hidden = selection.length === 0;
+        }
     }
 
     function renderSummary() {
@@ -1007,6 +1269,11 @@
 
         els.reservationCount.textContent = String(reserved.length);
         els.reservationList.replaceChildren();
+
+        if (els.tabReservationCount) {
+            els.tabReservationCount.textContent = String(reserved.length);
+            els.tabReservationCount.hidden = reserved.length === 0;
+        }
 
         if (reserved.length === 0) {
             els.reservationList.appendChild(el(
@@ -2305,6 +2572,7 @@
         resetEditState();
         selection = [];
         renderAll();
+        if (isMobileLayout()) setTab('prenotazioni');
         toast('Modifica annullata.', 'info');
     }
 
@@ -2335,7 +2603,11 @@
         els.guestNote.value = reservation.note || '';
 
         renderAll();
-        els.guestName.focus();
+        if (isMobileLayout()) {
+            setTab('nuova');
+        } else {
+            els.guestName.focus();
+        }
         toast('Modifica della prenotazione di ' + reservation.name + '.', 'info');
     }
 
@@ -2365,6 +2637,7 @@
         movePicked = null;
         clearSelection();
         renderAll();
+        if (isMobileLayout()) setTab('sala');
         toast(
             'Prenotazione di ' + reservation.name + ': scegli un tavolo o un gruppo libero ' +
             'con almeno ' + reservation.guests + ' posti.',
@@ -2401,6 +2674,7 @@
         assigningReservationId = null;
         saveState();
         renderAll();
+        if (isMobileLayout()) setTab('prenotazioni');
         toast(
             'Prenotazione di ' + reservation.name + ' assegnata a ' + shortName(entity) + '.',
             'success'
@@ -2536,7 +2810,11 @@
             selection = [];
             renderAll();
             toast('Prenotazione di ' + name + ' aggiornata.', 'success');
-            els.guestName.focus();
+            if (isMobileLayout()) {
+                setTab('prenotazioni');
+            } else {
+                els.guestName.focus();
+            }
             return;
         }
 
@@ -2566,7 +2844,11 @@
                   ' ospiti, senza tavolo. Assegnalo dalla lista.',
             'success'
         );
-        els.guestName.focus();
+        if (isMobileLayout()) {
+            setTab('prenotazioni');
+        } else {
+            els.guestName.focus();
+        }
     }
 
     function requestCancel(reservationId, button) {
