@@ -27,15 +27,17 @@
     let moveMode = false;
     let movePicked = null;
     let assigningReservationId = null;
+    let assignSelection = [];
     let editReservationId = null;
-    let editRoomsMode = false;
     let resetTimer = null;
     let deleteTableTimer = null;
-    let renumberTimer = null;
+    let roomDeleteTimer = null;
+    let settingsConfirmTimer = null;
     let installPrompt = null;
     let activeTab = 'sala';
     let touchStart = null;
     let lastFocusBeforePrint = null;
+    let lastFocusBeforeSettings = null;
 
     const TAB_IDS = ['nuova', 'sala', 'prenotazioni'];
     const MOBILE_QUERY = window.matchMedia('(max-width: 900px)');
@@ -234,6 +236,34 @@
         if (els.printDocTitle) {
             els.printDocTitle.textContent = PRINT_LABELS[mode] || 'Stampa';
         }
+
+        if (mode === 'reservations') {
+            const date = els.date.value || todayIso();
+            const dayReservations = reservationsForDate(date);
+            const guests = dayReservations.reduce(function (total, reservation) {
+                return total + reservation.guests;
+            }, 0);
+            const lunch = dayReservations.filter(function (reservation) {
+                return reservationBand(reservation) === 'pranzo';
+            }).length;
+            const dinner = dayReservations.filter(function (reservation) {
+                return reservationBand(reservation) === 'cena';
+            }).length;
+
+            if (els.printSlotLine) {
+                els.printSlotLine.textContent = 'Data: ' + formatDate(date);
+            }
+            if (els.printStatsLine) {
+                els.printStatsLine.textContent = [
+                    dayReservations.length + (dayReservations.length === 1 ? ' prenotazione' : ' prenotazioni'),
+                    guests + ' ospiti',
+                    'Pranzo ' + lunch,
+                    'Cena ' + dinner
+                ].join(' · ');
+            }
+            return;
+        }
+
         if (els.printSlotLine) {
             els.printSlotLine.textContent = 'Slot: ' + currentSlotLabel();
         }
@@ -243,10 +273,8 @@
                 els.bookedSeats.textContent + ' prenotati',
                 els.freeSeats.textContent + ' liberi'
             ];
-            if (els.reservationCount) {
-                const count = Number(els.reservationCount.textContent) || 0;
-                parts.push(count + (count === 1 ? ' prenotazione' : ' prenotazioni'));
-            }
+            const count = state.reservations.filter(matchesSlot).length;
+            parts.push(count + (count === 1 ? ' prenotazione' : ' prenotazioni'));
             els.printStatsLine.textContent = parts.join(' · ');
         }
     }
@@ -339,6 +367,7 @@
         bindEvents();
         bindTabs();
         bindPrint();
+        bindSettings();
         syncSlotFields();
         renderAll();
         setTab(activeTab, { scroll: false });
@@ -359,8 +388,13 @@
         els.moveBtn = document.getElementById('moveBtn');
         els.combineBtn = document.getElementById('combineBtn');
         els.separateBtn = document.getElementById('separateBtn');
-        els.editRoomsBtn = document.getElementById('editRoomsBtn');
-        els.renumberBtn = document.getElementById('renumberBtn');
+        els.settingsBtn = document.getElementById('settingsBtn');
+        els.settingsPanel = document.getElementById('settingsPanel');
+        els.settingsCloseBtn = document.getElementById('settingsCloseBtn');
+        els.settingsDoneBtn = document.getElementById('settingsDoneBtn');
+        els.settingsSummary = document.getElementById('settingsSummary');
+        els.settingsBody = document.getElementById('settingsBody');
+        els.settingsFactoryBtn = document.getElementById('settingsFactoryBtn');
         els.resetBtn = document.getElementById('resetBtn');
         els.installBtn = document.getElementById('installBtn');
         els.workspace = document.getElementById('workspace');
@@ -395,9 +429,12 @@
         els.guestPhone = document.getElementById('guestPhone');
         els.guestCount = document.getElementById('guestCount');
         els.guestNote = document.getElementById('guestNote');
+        els.selectTableBtn = document.getElementById('selectTableBtn');
+        els.selectTableLabel = document.getElementById('selectTableLabel');
         els.createBtn = document.getElementById('createBtn');
         els.cancelEditBtn = document.getElementById('cancelEditBtn');
         els.reservationCount = document.getElementById('reservationCount');
+        els.listSubtitle = document.getElementById('listSubtitle');
         els.reservationList = document.getElementById('reservationList');
         els.toastStack = document.getElementById('toastStack');
     }
@@ -570,6 +607,54 @@
 
     function entityRoomName(kind, id) {
         return roomName(entityRoomId(kind, id));
+    }
+
+    // Numera i tavoli da 1 a N dentro ogni sala, seguendo l'ordine visivo
+    // della pianta (dall'alto verso il basso, poi da sinistra a destra).
+    function orderedRoomTableEntries(room) {
+        if (!room) return [];
+        const entries = [];
+
+        room.layout.forEach(function (item) {
+            if (item.kind === 'table') {
+                entries.push({
+                    id: item.id,
+                    col: item.col,
+                    row: item.row
+                });
+                return;
+            }
+
+            const group = getGroup(item.id);
+            if (!group) return;
+            (group.offsets || []).forEach(function (offset) {
+                entries.push({
+                    id: offset.id,
+                    col: item.col + offset.dCol,
+                    row: item.row + offset.dRow
+                });
+            });
+        });
+
+        return entries.sort(function (a, b) {
+            return a.row - b.row || a.col - b.col || a.id - b.id;
+        });
+    }
+
+    function orderedRoomTables(room) {
+        return orderedRoomTableEntries(room)
+            .map(function (entry) { return getTable(entry.id); })
+            .filter(Boolean);
+    }
+
+    function tableLabel(tableId) {
+        const table = getTable(tableId);
+        if (!table) return 'T?';
+        const room = getRoom(table.roomId);
+        const index = orderedRoomTableEntries(room).findIndex(function (entry) {
+            return entry.id === tableId;
+        });
+        return 'T' + (index >= 0 ? index + 1 : tableId);
     }
 
     function itemKey(kind, id) {
@@ -785,10 +870,33 @@
         return reservation.date === slot.date && reservation.time === slot.time;
     }
 
+    function reservationTargets(reservation) {
+        if (!reservation) return [];
+        if (Array.isArray(reservation.targets)) return reservation.targets;
+        if (reservation.target) return [reservation.target];
+        return [];
+    }
+
+    function reservationHasTarget(reservation, kind, id) {
+        return reservationTargets(reservation).some(function (target) {
+            return target.kind === kind && target.id === id;
+        });
+    }
+
     function activeReservation(kind, id) {
         return state.reservations.find(function (r) {
-            return matchesSlot(r) && r.target &&
-                r.target.kind === kind && r.target.id === id;
+            return matchesSlot(r) && reservationHasTarget(r, kind, id);
+        }) || null;
+    }
+
+    function reservationAtSlot(kind, id, date, time, excludeId) {
+        return state.reservations.find(function (reservation) {
+            if (excludeId !== undefined && excludeId !== null && reservation.id === excludeId) {
+                return false;
+            }
+            return reservation.date === date &&
+                reservation.time === time &&
+                reservationHasTarget(reservation, kind, id);
         }) || null;
     }
 
@@ -801,6 +909,7 @@
     }
 
     function entitySeats(entity) {
+        if (!entity) return 0;
         if (entity.kind === 'group') {
             return groupSeats(getGroup(entity.id));
         }
@@ -826,31 +935,60 @@
         return item.colSpan === span.colSpan && item.rowSpan === span.rowSpan;
     }
 
-    function maxReservedGuests(tableId) {
-        return state.reservations.reduce(function (max, reservation) {
-            if (!reservation.target || reservation.target.kind !== 'table' || reservation.target.id !== tableId) {
-                return max;
-            }
-            return Math.max(max, reservation.guests);
+    function otherTargetsSeats(reservation, kind, id) {
+        return reservationTargets(reservation).reduce(function (total, target) {
+            if (target.kind === kind && target.id === id) return total;
+            return total + entitySeats(target);
         }, 0);
     }
 
-    function maxGroupReservedGuests(groupId) {
-        return state.reservations.reduce(function (max, reservation) {
-            if (!reservation.target || reservation.target.kind !== 'group' || reservation.target.id !== groupId) {
-                return max;
-            }
-            return Math.max(max, reservation.guests);
+    // Posti minimi che un tavolo/gruppo deve mantenere per rispettare
+    // tutte le prenotazioni che lo coinvolgono, anche multi-tavolo.
+    function minimumSeatsForEntity(kind, id) {
+        let minimum = 1;
+        state.reservations.forEach(function (reservation) {
+            if (!reservationHasTarget(reservation, kind, id)) return;
+            const required = reservation.guests - otherTargetsSeats(reservation, kind, id);
+            minimum = Math.max(minimum, required);
+        });
+        return Math.max(1, minimum);
+    }
+
+    function reservationCapacity(reservation) {
+        return reservationTargets(reservation).reduce(function (total, target) {
+            return total + entitySeats(target);
         }, 0);
     }
 
     function shortName(entity) {
         if (entity.kind === 'table') {
-            return 'Tavolo ' + entity.id;
+            return 'Tavolo ' + tableLabel(entity.id);
         }
         const group = getGroup(entity.id);
         if (!group) return 'Gruppo';
-        return 'Gruppo T' + group.memberIds.join(' + T');
+        return 'Gruppo ' + group.memberIds.map(tableLabel).join(' + ');
+    }
+
+    function targetsLabel(targets) {
+        if (!targets || targets.length === 0) return 'Senza tavolo';
+        if (targets.length === 1) return fullName(targets[0]);
+
+        const rooms = targets.map(function (target) {
+            return entityRoomId(target.kind, target.id);
+        });
+        const sameRoom = rooms.every(function (roomId) { return roomId === rooms[0]; });
+        const labels = targets.map(function (target) {
+            return target.kind === 'table'
+                ? tableLabel(target.id)
+                : shortName(target).replace(/^Gruppo\s+/, '');
+        });
+
+        if (sameRoom && rooms[0]) {
+            return 'Tavoli ' + labels.join(' + ') + ' · ' + roomName(rooms[0]);
+        }
+        return targets.map(function (target) {
+            return fullName(target);
+        }).join(' · ');
     }
 
     function fullName(entity) {
@@ -894,7 +1032,6 @@
         });
         els.rooms.classList.toggle('is-moving', moveMode);
         els.rooms.classList.toggle('is-assigning', !!assigningReservationId);
-        els.rooms.classList.toggle('is-editing-rooms', editRoomsMode);
         els.rooms.replaceChildren(fragment);
     }
 
@@ -918,19 +1055,7 @@
         ));
         head.appendChild(heading);
 
-        if (editRoomsMode) {
-            const tools = el('div', 'room-tools');
-            tools.appendChild(el('span', 'room-hint', 'Modifica sale'));
-
-            const add = el('button', 'btn btn-add-table', '+ Tavolo');
-            add.type = 'button';
-            add.dataset.addTable = room.id;
-            add.setAttribute('aria-label', 'Aggiungi un tavolo in ' + room.name);
-            add.title = 'Aggiungi un tavolo da 3 posti in ' + room.name;
-            tools.appendChild(add);
-
-            head.appendChild(tools);
-        } else if (moveMode) {
+        if (moveMode) {
             head.appendChild(el('span', 'room-hint', 'Celle libere attive'));
         } else if (assigningReservationId) {
             head.appendChild(el('span', 'room-hint', 'Scegli un tavolo'));
@@ -1023,9 +1148,11 @@
             card.classList.add('is-picked');
         }
         if (assigningReservationId) {
-            const pending = getReservation(assigningReservationId);
-            const assignable = pending && !reservation && entitySeats(entity) >= pending.guests;
-            card.classList.toggle('is-assignable', !!assignable);
+            card.classList.toggle('is-assignable', !reservation);
+            const picked = assignSelection.some(function (entry) {
+                return entry.kind === entity.kind && entry.id === entity.id;
+            });
+            if (picked) card.classList.add('is-assign-target');
         }
 
         placeItem(card, item);
@@ -1040,14 +1167,14 @@
 
         card.setAttribute(
             'aria-label',
-            room.name + ', TAVOLO T' + table.id + ', ' + table.seats + ' posti, ' +
+            room.name + ', TAVOLO ' + tableLabel(table.id) + ', ' + table.seats + ' posti, ' +
             (reservation
                 ? 'prenotato da ' + reservation.name + ' per ' + reservation.guests + ' ospiti'
                 : 'Libero')
         );
 
         card.appendChild(el('span', 'entity-tag', 'Tavolo'));
-        card.appendChild(el('span', 'entity-name', 'T' + table.id));
+        card.appendChild(el('span', 'entity-name', tableLabel(table.id)));
         card.appendChild(el(
             'span',
             'entity-seats',
@@ -1055,10 +1182,13 @@
                 ? reservation.guests + (reservation.guests === 1 ? ' ospite' : ' ospiti')
                 : table.seats + ' posti'
         ));
+        const multi = reservation && reservationTargets(reservation).length > 1;
         card.appendChild(el(
             'span',
             'entity-note',
-            reservation ? reservation.name : 'Libero'
+            reservation
+                ? reservation.name + (multi ? ' · ' + reservationTargets(reservation).length + ' tavoli' : '')
+                : 'Libero'
         ));
 
         return card;
@@ -1073,7 +1203,7 @@
         card.setAttribute(
             'aria-label',
             room.name + ', GRUPPO · ' + group.memberIds.length + ' TAVOLI (' +
-            group.memberIds.map(function (id) { return 'T' + id; }).join(' + ') + '), ' +
+            group.memberIds.map(tableLabel).join(' + ') + '), ' +
             seats + ' posti, ' +
             (reservation ? 'prenotato da ' + reservation.name : 'unito e libero')
         );
@@ -1093,17 +1223,21 @@
 
         const members = el('span', 'entity-members');
         group.memberIds.slice(0, 4).forEach(function (id) {
-            members.appendChild(el('span', 'chip', 'T' + id));
+            members.appendChild(el('span', 'chip', tableLabel(id)));
         });
         if (group.memberIds.length > 4) {
             members.appendChild(el('span', 'chip', '+' + (group.memberIds.length - 4)));
         }
         card.appendChild(members);
 
+        const multiGroup = reservation && reservationTargets(reservation).length > 1;
         card.appendChild(el(
             'span',
             'entity-note',
-            reservation ? 'Prenotato · ' + reservation.name : 'Unito · seleziona per separare'
+            reservation
+                ? 'Prenotato · ' + reservation.name +
+                    (multiGroup ? ' · ' + reservationTargets(reservation).length + ' tavoli' : '')
+                : 'Unito · seleziona per separare'
         ));
 
         return card;
@@ -1128,6 +1262,10 @@
 
         const slot = currentSlot();
         els.slotLabel.textContent = 'Slot attivo: ' + formatDate(slot.date) + ' · ' + slot.time;
+
+        if (els.settingsPanel && !els.settingsPanel.hidden) {
+            renderSettings();
+        }
     }
 
     function selectionSeats() {
@@ -1140,8 +1278,12 @@
         if (assigningReservationId) {
             const pending = getReservation(assigningReservationId);
             if (pending) {
+                const picked = assignSelection.reduce(function (total, entity) {
+                    return total + entitySeats(entity);
+                }, 0);
                 return 'Assegna ' + pending.name + ' · ' + pending.guests +
-                    ' ospiti: scegli un tavolo o un gruppo libero con capienza sufficiente.';
+                    ' ospiti: selezionati ' + assignSelection.length + ' tavoli (' +
+                    picked + ' posti). Scegli uno o più tavoli liberi fino alla capienza necessaria.';
             }
         }
 
@@ -1152,13 +1294,8 @@
             return shortName(movePicked) + ' pronto: scegli una cella libera o un altro tavolo come destinazione.';
         }
 
-        if (editRoomsMode) {
-            return 'Modifica sale: ' + state.tables.length + ' tavoli · ' + totalCapacity() +
-                ' posti totali. Aggiungi o elimina tavoli, cambia i posti e usa “Sposta tavoli” per la disposizione. Le modifiche restano dopo “Ripristina sala”.';
-        }
-
         if (selection.length === 0) {
-            return 'Seleziona un tavolo o un gruppo; seleziona più tavoli della stessa sala per unirli.';
+            return 'Seleziona uno o più tavoli. Puoi prenotarli insieme oppure unirli se sono adiacenti.';
         }
 
         if (selection.length === 1) {
@@ -1168,10 +1305,10 @@
             if (entity.kind === 'group') {
                 if (reservation) {
                     return fullName(entity) + ' è prenotato da ' + reservation.name +
-                        ': annulla la prenotazione per separarlo.';
+                        ': annulla la prenotazione per dividerlo.';
                 }
                 return fullName(entity) + ' selezionato · ' + entitySeats(entity) +
-                    ' posti. Premi Separa tavoli per tornare ai tavoli singoli.';
+                    ' posti. Premi Dividi tavoli per tornare ai tavoli singoli.';
             }
 
             if (reservation) {
@@ -1179,11 +1316,11 @@
                     ' (' + reservation.guests + ' ospiti).';
             }
             return fullName(entity) + ' selezionato · ' + entitySeats(entity) +
-                ' posti. Aggiungi tavoli della stessa sala per unirli o compila il form.';
+                ' posti. Aggiungi altri tavoli per la prenotazione o compila il form.';
         }
 
         return selection.length + ' tavoli selezionati · ' +
-            selectionSeats() + ' posti combinabili. Premi Unisci tavoli.';
+            selectionSeats() + ' posti. Puoi prenotarli tutti insieme o unirli se adiacenti.';
     }
 
     function canCombine() {
@@ -1197,14 +1334,14 @@
     function renderSelectionUI() {
         els.statusLine.textContent = statusMessage();
 
-        const combineDisabled = editRoomsMode || !canCombine();
+        const combineDisabled = !canCombine();
         els.combineBtn.classList.toggle('is-inactive', combineDisabled);
-        els.combineBtn.classList.toggle('is-active', !editRoomsMode && canCombine());
+        els.combineBtn.classList.toggle('is-active', canCombine());
         els.combineBtn.setAttribute('aria-disabled', String(combineDisabled));
 
-        const separateDisabled = editRoomsMode || !canSeparate();
+        const separateDisabled = !canSeparate();
         els.separateBtn.classList.toggle('is-inactive', separateDisabled);
-        els.separateBtn.classList.toggle('is-active', !editRoomsMode && canSeparate());
+        els.separateBtn.classList.toggle('is-active', canSeparate());
         els.separateBtn.setAttribute('aria-disabled', String(separateDisabled));
 
         els.moveBtn.classList.toggle('is-active', moveMode);
@@ -1216,36 +1353,12 @@
     }
 
     function renderSummary() {
-        let total = 0;
-        let booked = 0;
-        const entities = [];
-
-        state.groups.forEach(function (group) {
-            const seats = groupSeats(group);
-            entities.push({ kind: 'group', id: group.id });
-            total += seats;
-        });
-
-        state.tables.forEach(function (table) {
-            if (table.groupId !== null) return;
-            entities.push({ kind: 'table', id: table.id });
-            total += table.seats;
-        });
-
-        let activeCount = 0;
-        entities.forEach(function (entity) {
-            const reservation = activeReservation(entity.kind, entity.id);
-            if (reservation) {
-                booked += reservation.guests;
-                activeCount++;
-            }
-        });
-
-        state.reservations.forEach(function (reservation) {
-            if (!matchesSlot(reservation) || reservation.target) return;
-            booked += reservation.guests;
-            activeCount++;
-        });
+        const total = totalCapacity();
+        const active = state.reservations.filter(matchesSlot);
+        const booked = active.reduce(function (sum, reservation) {
+            return sum + reservation.guests;
+        }, 0);
+        const activeCount = active.length;
 
         const free = Math.max(0, total - booked);
         const percent = total > 0 ? Math.round((free / total) * 100) : 0;
@@ -1262,13 +1375,37 @@
         els.freeFoot.textContent = total > 0 ? percent + '% della capienza libero' : 'Sala non disponibile';
     }
 
+    function timeToMinutes(time) {
+        const parts = String(time || '0:0').split(':');
+        return Number(parts[0]) * 60 + Number(parts[1]);
+    }
+
+    function reservationsForDate(date) {
+        return state.reservations
+            .filter(function (reservation) { return reservation.date === date; })
+            .sort(function (a, b) {
+                return timeToMinutes(a.time) - timeToMinutes(b.time) || a.id - b.id;
+            });
+    }
+
+    function reservationBand(reservation) {
+        const minutes = timeToMinutes(reservation.time);
+        if (minutes < 16 * 60) return 'pranzo';
+        if (minutes <= 22 * 60) return 'cena';
+        return 'extra';
+    }
+
     function renderReservations() {
-        const reserved = state.reservations
-            .filter(matchesSlot)
-            .sort(function (a, b) { return a.id - b.id; });
+        const date = els.date.value || todayIso();
+        const reserved = reservationsForDate(date);
 
         els.reservationCount.textContent = String(reserved.length);
         els.reservationList.replaceChildren();
+
+        if (els.listSubtitle) {
+            els.listSubtitle.textContent = 'Prenotazioni di ' + formatDate(date) +
+                ' · Pranzo e cena.';
+        }
 
         if (els.tabReservationCount) {
             els.tabReservationCount.textContent = String(reserved.length);
@@ -1279,29 +1416,69 @@
             els.reservationList.appendChild(el(
                 'p',
                 'empty-state',
-                'Nessuna prenotazione per questo slot.'
+                'Nessuna prenotazione per questa data.'
             ));
             return;
         }
 
+        const bands = [
+            { id: 'pranzo', label: 'Pranzo', range: '10:00–16:00', items: [] },
+            { id: 'cena', label: 'Cena', range: '16:00–22:00', items: [] },
+            { id: 'extra', label: 'Dopo cena', range: 'dopo le 22:00', items: [] }
+        ];
+
         reserved.forEach(function (reservation) {
-            els.reservationList.appendChild(renderReservationItem(reservation));
+            const band = bands.find(function (entry) {
+                return entry.id === reservationBand(reservation);
+            });
+            if (band) band.items.push(reservation);
+        });
+
+        bands.forEach(function (band) {
+            if (!band.items.length) return;
+            const bandGuests = band.items.reduce(function (total, reservation) {
+                return total + reservation.guests;
+            }, 0);
+
+            const section = el('section', 'reservation-group group-' + band.id);
+            const head = el('div', 'reservation-group-head');
+            head.appendChild(el('h3', 'reservation-group-title', band.label));
+            head.appendChild(el('span', 'reservation-group-range', band.range));
+            head.appendChild(el(
+                'span',
+                'reservation-group-meta',
+                band.items.length + (band.items.length === 1 ? ' prenotazione' : ' prenotazioni') +
+                ' · ' + bandGuests + ' ospiti'
+            ));
+            section.appendChild(head);
+
+            const list = el('div', 'reservation-group-list');
+            band.items.forEach(function (reservation) {
+                list.appendChild(renderReservationItem(reservation));
+            });
+            section.appendChild(list);
+            els.reservationList.appendChild(section);
         });
     }
 
     function renderReservationItem(reservation) {
         const article = document.createElement('article');
-        const assigned = !!reservation.target;
+        const targets = reservationTargets(reservation);
+        const assigned = targets.length > 0;
         article.className = 'reservation' + (assigned ? '' : ' is-unassigned');
+        article.dataset.reservationId = String(reservation.id);
 
-        const body = document.createElement('div');
-        body.className = 'reservation-body';
-        body.appendChild(el('p', 'reservation-name', reservation.name));
+        const body = el('div', 'reservation-body');
+        const titleRow = el('div', 'reservation-title-row');
+        titleRow.appendChild(el('span', 'reservation-time', reservation.time));
+        titleRow.appendChild(el('p', 'reservation-name', reservation.name));
+        body.appendChild(titleRow);
+
         body.appendChild(el(
             'p',
             'reservation-meta',
             reservation.guests + ' ospiti · ' +
-            (assigned ? fullName(reservation.target) : 'Senza tavolo') +
+            targetsLabel(targets) +
             (reservation.phone ? ' · ' + reservation.phone : '')
         ));
         if (reservation.note) {
@@ -1324,7 +1501,7 @@
             assign.type = 'button';
             assign.setAttribute(
                 'aria-label',
-                'Assegna un tavolo alla prenotazione di ' + reservation.name
+                'Assegna uno o più tavoli alla prenotazione di ' + reservation.name
             );
             assign.addEventListener('click', function () {
                 startAssign(reservation.id);
@@ -1351,162 +1528,163 @@
         els.formTitle.textContent = editing ? 'Modifica prenotazione' : 'Nuova prenotazione';
         els.createBtn.textContent = editing ? 'Salva modifiche' : 'Crea prenotazione';
         els.cancelEditBtn.hidden = !editing;
+    }
 
-        els.editRoomsBtn.classList.toggle('is-active', editRoomsMode);
-        els.editRoomsBtn.textContent = editRoomsMode ? 'Fine modifica sale' : 'Modifica sale';
-        els.editRoomsBtn.setAttribute('aria-pressed', editRoomsMode ? 'true' : 'false');
-
-        els.renumberBtn.hidden = !editRoomsMode;
-        if (!editRoomsMode && els.renumberBtn.dataset.confirming === '1') {
-            window.clearTimeout(renumberTimer);
-            els.renumberBtn.dataset.confirming = '0';
-            els.renumberBtn.classList.remove('is-danger');
-            els.renumberBtn.textContent = 'Rinumera tavoli';
-        } else if (els.renumberBtn.dataset.confirming !== '1') {
-            els.renumberBtn.textContent = 'Rinumera tavoli';
-            els.renumberBtn.classList.remove('is-danger');
-        }
+    function selectionSignature(entities) {
+        return entities.map(function (entity) {
+            return itemKey(entity.kind, entity.id);
+        }).sort().join('|');
     }
 
     function syncForm() {
-        const single = selection.length === 1 ? selection[0] : null;
+        const targets = selection.slice();
         const editingReservation = editReservationId !== null ? getReservation(editReservationId) : null;
 
         els.targetInfo.className = 'target';
         els.targetInfo.replaceChildren();
 
-        if (!single) {
+        if (targets.length === 0) {
             els.targetInfo.classList.add('is-empty');
             els.createBtn.setAttribute('aria-disabled', 'false');
             syncGuestLimit(totalCapacity(), false);
-
-            if (editRoomsMode) {
-                els.targetInfo.classList.add('is-setup');
-                els.targetInfo.appendChild(el(
-                    'p',
-                    'target-empty',
-                    'Modifica sale: seleziona un tavolo per cambiarne i posti, eliminalo o aggiungine uno con “+ Tavolo”. I numeri eliminati tornano disponibili; “Rinumera tavoli” ricompatta la numerazione. “Ripristina sala” manterrà questa configurazione.'
-                ));
-
-                const factory = el('button', 'btn btn-factory btn-block', 'Ripristina disposizione iniziale');
-                factory.type = 'button';
-                factory.dataset.confirming = '0';
-                factory.addEventListener('click', function () {
-                    requestFactorySetup(factory);
-                });
-                els.targetInfo.appendChild(factory);
-                return;
-            }
 
             els.targetInfo.appendChild(el(
                 'p',
                 'target-empty',
                 editingReservation
-                    ? 'Prenotazione senza tavolo: salva le modifiche oppure seleziona un tavolo per assegnarla.'
-                    : selection.length > 1
-                        ? 'Più tavoli selezionati: uniscili oppure selezionane uno. Per prenotare senza tavolo, deseleziona tutto.'
-                        : 'Nessun tavolo selezionato: la prenotazione sarà salvata senza tavolo e potrai assegnarlo in un secondo momento.'
+                    ? 'Prenotazione senza tavolo: salva le modifiche oppure seleziona uno o più tavoli per assegnarla.'
+                    : 'Nessun tavolo selezionato: la prenotazione sarà salvata senza tavolo e potrai assegnarlo in un secondo momento.'
             ));
+            updateSelectTableButton(0, false);
             return;
         }
 
-        const seats = entitySeats(single);
-        const reservation = activeReservation(single.kind, single.id);
-        const roomLabel = entityRoomName(single.kind, single.id);
-        syncGuestLimit(seats);
+        const seats = selectionSeats();
+        const guestValue = Number(els.guestCount.value);
+        const hasGuestValue = els.guestCount.value !== '' && Number.isFinite(guestValue);
+        const short = hasGuestValue && guestValue > seats;
+        syncGuestLimit(seats, targets.length === 1);
 
         const top = el('div', 'target-top');
-        top.appendChild(el('span', 'target-name', shortName(single)));
+        top.appendChild(el(
+            'span',
+            'target-name',
+            targets.length === 1 ? shortName(targets[0]) : targets.length + ' tavoli selezionati'
+        ));
         top.appendChild(el('span', 'target-seats', seats + ' posti'));
         els.targetInfo.appendChild(top);
 
-        if (reservation) {
-            const editingThis = editingReservation && editingReservation.id === reservation.id;
+        const list = el('div', 'target-list');
+        targets.forEach(function (target) {
+            const row = el('div', 'target-item');
+            row.appendChild(el('span', 'target-item-name', shortName(target)));
+            row.appendChild(el('span', 'target-item-room', entityRoomName(target.kind, target.id)));
+            row.appendChild(el('span', 'target-item-seats', entitySeats(target) + ' posti'));
 
-            if (editingThis) {
-                els.targetInfo.classList.add('is-editing');
-                els.targetInfo.appendChild(el(
-                    'p',
-                    'target-note',
-                    roomLabel + ' · modifica della prenotazione di ' + reservation.name +
-                    ' (' + reservation.guests + ' ospiti)'
-                ));
-                els.createBtn.setAttribute('aria-disabled', 'false');
-            } else {
-                els.targetInfo.classList.add('is-busy');
-                els.targetInfo.appendChild(el(
-                    'p',
-                    'target-note',
-                    roomLabel + ' · prenotato da ' + reservation.name +
-                    ' (' + reservation.guests + ' ospiti)'
-                ));
-                els.createBtn.setAttribute('aria-disabled', 'true');
+            const remove = el('button', 'target-remove', '×');
+            remove.type = 'button';
+            remove.dataset.removeTarget = itemKey(target.kind, target.id);
+            remove.setAttribute(
+                'aria-label',
+                'Rimuovi ' + fullName(target) + ' dalla selezione'
+            );
+            row.appendChild(remove);
+            list.appendChild(row);
+        });
+        els.targetInfo.appendChild(list);
 
-                const edit = el('button', 'btn btn-edit', 'Modifica prenotazione');
-                edit.type = 'button';
-                edit.setAttribute('aria-label', 'Modifica la prenotazione di ' + reservation.name);
-                edit.addEventListener('click', function () {
-                    startEdit(reservation.id);
-                });
-                els.targetInfo.appendChild(edit);
-            }
+        const conflicts = [];
+        targets.forEach(function (target) {
+            const conflict = reservationAtSlot(
+                target.kind,
+                target.id,
+                els.date.value,
+                els.time.value,
+                editingReservation ? editingReservation.id : null
+            );
+            if (conflict) conflicts.push({ target: target, reservation: conflict });
+        });
+
+        const editingSame = !!editingReservation &&
+            selectionSignature(targets) === selectionSignature(reservationTargets(editingReservation));
+
+        if (conflicts.length) {
+            els.targetInfo.classList.add('is-busy');
+            const names = conflicts.map(function (entry) {
+                return shortName(entry.target) + ' (' + entry.reservation.name + ')';
+            }).join(', ');
+            els.targetInfo.appendChild(el(
+                'p',
+                'target-note',
+                names + (conflicts.length === 1 ? ' è già prenotato' : ' sono già prenotati') +
+                ' in questo slot: scegli altri tavoli.'
+            ));
+            els.createBtn.setAttribute('aria-disabled', 'true');
+
+            const conflictReservation = conflicts[0].reservation;
+            const edit = el('button', 'btn btn-edit', 'Modifica prenotazione');
+            edit.type = 'button';
+            edit.setAttribute('aria-label', 'Modifica la prenotazione di ' + conflictReservation.name);
+            edit.addEventListener('click', function () {
+                startEdit(conflictReservation.id);
+            });
+            els.targetInfo.appendChild(edit);
+        } else if (editingSame) {
+            els.targetInfo.classList.add('is-editing');
+            els.targetInfo.appendChild(el(
+                'p',
+                'target-note',
+                'Modifica della prenotazione di ' + editingReservation.name +
+                ' (' + editingReservation.guests + ' ospiti).'
+            ));
         } else {
             els.targetInfo.classList.add('is-free');
             els.targetInfo.appendChild(el(
                 'p',
                 'target-note',
-                roomLabel + ' · ' + (single.kind === 'group'
-                    ? 'tavolo unico con capienza già sommata.'
-                    : 'disponibile per questo slot.')
+                targets.length === 1
+                    ? entityRoomName(targets[0].kind, targets[0].id) +
+                        (targets[0].kind === 'group'
+                            ? ' · tavolo unico con capienza già sommata.'
+                            : ' · disponibile per questo slot.')
+                    : 'Tavoli disponibili per questo slot: la prenotazione li occuperà tutti.'
             ));
-            els.createBtn.setAttribute('aria-disabled', 'false');
         }
 
-        if (single.kind === 'table') {
-            els.targetInfo.appendChild(buildSeatEditor(single.id));
-        } else {
-            const group = getGroup(single.id);
-            if (group) els.targetInfo.appendChild(buildGroupSeatEditor(group));
+        if (short) {
+            els.targetInfo.classList.add('is-short');
+            els.targetInfo.appendChild(el(
+                'p',
+                'target-warning',
+                'Mancano ' + (guestValue - seats) + ' posti: aggiungi un altro tavolo dalla pianta.'
+            ));
         }
 
-        if (editRoomsMode && single.kind === 'table') {
-            els.targetInfo.appendChild(buildDeleteTableControl(single.id));
+        if (targets.length === 1) {
+            const single = targets[0];
+            if (single.kind === 'table') {
+                els.targetInfo.appendChild(buildSeatEditor(single.id));
+            } else {
+                const group = getGroup(single.id);
+                if (group) els.targetInfo.appendChild(buildGroupSeatEditor(group));
+            }
         }
+
+        const blocked = conflicts.length > 0 || short;
+        els.createBtn.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+        updateSelectTableButton(seats, short);
     }
 
-    function buildDeleteTableControl(tableId) {
-        const wrapper = el('div', 'setup-box');
-        wrapper.appendChild(el(
-            'p',
-            'setup-hint',
-            'Modifica permanente: posti e posizione restano anche dopo “Ripristina sala”.'
-        ));
-
-        const used = tableReservations(tableId).length;
-        const button = el('button', 'btn btn-danger btn-block', 'Elimina tavolo');
-        button.type = 'button';
-        button.dataset.deleteTable = String(tableId);
-
-        if (used > 0) {
-            button.disabled = true;
-            wrapper.appendChild(el(
-                'p',
-                'setup-hint',
-                used === 1
-                    ? 'Il tavolo ha 1 prenotazione: annullala per eliminarlo.'
-                    : 'Il tavolo ha ' + used + ' prenotazioni: annullale per eliminarlo.'
-            ));
-        } else if (state.tables.length <= 1) {
-            button.disabled = true;
-            wrapper.appendChild(el('p', 'setup-hint', 'Deve restare almeno un tavolo.'));
-        } else {
-            button.addEventListener('click', function () {
-                requestDeleteTable(tableId, button);
-            });
+    function updateSelectTableButton(seats, short) {
+        if (!els.selectTableBtn) return;
+        if (els.selectTableLabel) {
+            els.selectTableLabel.textContent = selection.length === 0
+                ? 'Seleziona tavolo'
+                : short
+                    ? 'Aggiungi un altro tavolo'
+                    : 'Modifica tavoli selezionati';
         }
-
-        wrapper.appendChild(button);
-        return wrapper;
+        els.selectTableBtn.classList.toggle('is-short', !!short);
     }
 
     function capacityError(seats, single) {
@@ -1529,7 +1707,7 @@
         minus.type = 'button';
         minus.dataset.seatStep = '-1';
         minus.dataset.tableId = String(table.id);
-        minus.setAttribute('aria-label', 'Riduci di un posto al tavolo ' + table.id);
+        minus.setAttribute('aria-label', 'Riduci di un posto al tavolo ' + tableLabel(table.id));
         minus.toggleAttribute('disabled', table.seats <= 1);
 
         const input = document.createElement('input');
@@ -1541,13 +1719,13 @@
         input.step = '1';
         input.inputMode = 'numeric';
         input.value = String(table.seats);
-        input.setAttribute('aria-label', 'Numero di posti del tavolo ' + table.id);
+        input.setAttribute('aria-label', 'Numero di posti del tavolo ' + tableLabel(table.id));
 
         const plus = el('button', 'seat-step', '+');
         plus.type = 'button';
         plus.dataset.seatStep = '1';
         plus.dataset.tableId = String(table.id);
-        plus.setAttribute('aria-label', 'Aggiungi un posto al tavolo ' + table.id);
+        plus.setAttribute('aria-label', 'Aggiungi un posto al tavolo ' + tableLabel(table.id));
         plus.toggleAttribute('disabled', table.seats >= MAX_SEATS);
 
         controls.appendChild(minus);
@@ -1558,7 +1736,7 @@
 
     function buildSeatEditor(tableId) {
         const table = getTable(tableId);
-        const blocked = maxReservedGuests(tableId);
+        const blocked = minimumSeatsForEntity('table', tableId);
         const wrapper = el('div', 'seat-editor');
         wrapper.dataset.tableId = String(tableId);
 
@@ -1576,7 +1754,7 @@
             'seat-hint',
             'Da 1 a 5 posti: tavolo quadrato. Da 6 a 12 posti: tavolo lungo orizzontale.'
         );
-        if (blocked > 0) {
+        if (blocked > 1) {
             hint.textContent += ' Riduzione minima consentita: ' + blocked +
                 (blocked === 1 ? ' posto (prenotazione attiva).' : ' posti (prenotazione attiva).');
         }
@@ -1590,7 +1768,7 @@
     }
 
     function buildGroupSeatEditor(group) {
-        const blocked = maxGroupReservedGuests(group.id);
+        const blocked = minimumSeatsForEntity('group', group.id);
         const wrapper = el('div', 'seat-editor seat-editor-group');
         wrapper.dataset.groupId = String(group.id);
 
@@ -1606,7 +1784,7 @@
 
             const row = el('div', 'seat-member');
             row.dataset.tableId = String(tableId);
-            row.appendChild(el('span', 'seat-member-label', 'T' + tableId));
+            row.appendChild(el('span', 'seat-member-label', tableLabel(tableId)));
             row.appendChild(createSeatControls(table));
             list.appendChild(row);
         });
@@ -1617,7 +1795,7 @@
             'seat-hint',
             'La capienza totale si aggiorna subito. Se un tavolo si allarga, il gruppo si riposiziona quando serve.'
         );
-        if (blocked > 0) {
+        if (blocked > 1) {
             hint.textContent += ' Riduzione minima del gruppo: ' + blocked +
                 (blocked === 1 ? ' posto (prenotazione attiva).' : ' posti (prenotazione attiva).');
         }
@@ -1657,12 +1835,13 @@
             return applyGroupedTableSeats(table, seats);
         }
 
-        const reserved = maxReservedGuests(tableId);
+        const reserved = minimumSeatsForEntity('table', tableId);
         if (seats < reserved) {
             return {
                 ok: false,
-                error: 'Riduzione non consentita: una prenotazione occupa ' +
-                    reserved + (reserved === 1 ? ' posto.' : ' posti.')
+                error: 'Riduzione non consentita: servono almeno ' +
+                    reserved + (reserved === 1 ? ' posto.' : ' posti.') +
+                    ' per le prenotazioni attive.'
             };
         }
 
@@ -1707,7 +1886,7 @@
 
         table.seats = seats;
         saveState();
-        if (editRoomsMode) saveConfig();
+        saveConfig();
         renderRooms();
         renderSummary();
         renderSelectionUI();
@@ -1721,12 +1900,13 @@
         }
 
         const nextTotal = groupSeats(group) - table.seats + seats;
-        const reserved = maxGroupReservedGuests(group.id);
+        const reserved = minimumSeatsForEntity('group', group.id);
         if (nextTotal < reserved) {
             return {
                 ok: false,
-                error: 'Riduzione non consentita: una prenotazione occupa ' +
-                    reserved + (reserved === 1 ? ' posto.' : ' posti.')
+                error: 'Riduzione non consentita: il gruppo deve mantenere almeno ' +
+                    reserved + (reserved === 1 ? ' posto.' : ' posti.') +
+                    ' per le prenotazioni attive.'
             };
         }
 
@@ -1852,19 +2032,11 @@
 
     function toggleSelection(entity) {
         const alreadySelected = isSelected(entity);
-        const roomId = entityRoomId(entity.kind, entity.id);
 
         if (alreadySelected) {
             selection = selection.filter(function (s) {
                 return !(s.kind === entity.kind && s.id === entity.id);
             });
-        } else if (editReservationId !== null || editRoomsMode) {
-            // In modifica prenotazione o modifica sale il tavolo si cambia, non si aggiunge.
-            selection = [{ kind: entity.kind, id: entity.id }];
-        } else if (entity.kind === 'group' || selection.some(function (s) {
-            return s.kind === 'group' || entityRoomId(s.kind, s.id) !== roomId;
-        })) {
-            selection = [{ kind: entity.kind, id: entity.id }];
         } else {
             selection = selection.concat([{ kind: entity.kind, id: entity.id }]);
         }
@@ -1882,43 +2054,14 @@
 
     function tableReservations(tableId) {
         return state.reservations.filter(function (reservation) {
-            return !!reservation.target &&
-                reservation.target.kind === 'table' &&
-                reservation.target.id === tableId;
+            return reservationHasTarget(reservation, 'table', tableId);
         });
     }
 
-    function toggleEditRooms() {
-        if (!editRoomsMode) {
-            if (state.groups.length) {
-                nudge(els.editRoomsBtn);
-                toast(
-                    'Separa i tavoli uniti prima di modificare le sale: la configurazione contiene solo i tavoli singoli.',
-                    'warning'
-                );
-                return;
-            }
-
-            editRoomsMode = true;
-            moveMode = false;
-            movePicked = null;
-            assigningReservationId = null;
-            if (editReservationId !== null) resetEditState();
-            clearSelection();
-            renderAll();
-            toast(
-                'Modifica sale attiva: aggiungi o elimina tavoli, cambia i posti e usa “Sposta tavoli” per la disposizione. Le modifiche restano anche dopo “Ripristina sala”.',
-                'info'
-            );
-            return;
-        }
-
-        editRoomsMode = false;
-        moveMode = false;
-        movePicked = null;
-        clearSelection();
-        renderAll();
-        toast('Modifica sale terminata: “Ripristina sala” manterrà la disposizione salvata.', 'success');
+    function groupReservations(groupId) {
+        return state.reservations.filter(function (reservation) {
+            return reservationHasTarget(reservation, 'group', groupId);
+        });
     }
 
     function findFirstFreeOrigin(room) {
@@ -1956,7 +2099,7 @@
 
     function renumberTables() {
         if (state.groups.length) {
-            toast('Separa i tavoli uniti prima di rinumerare.', 'warning');
+            toast('Dividi i tavoli uniti prima di rinumerare.', 'warning');
             return false;
         }
 
@@ -1981,9 +2124,11 @@
         });
 
         state.reservations.forEach(function (reservation) {
-            if (!reservation.target || reservation.target.kind !== 'table') return;
-            const next = map.get(reservation.target.id);
-            if (next) reservation.target.id = next;
+            reservationTargets(reservation).forEach(function (target) {
+                if (target.kind !== 'table') return;
+                const next = map.get(target.id);
+                if (next) target.id = next;
+            });
         });
 
         selection = selection.map(function (entity) {
@@ -2004,41 +2149,14 @@
         renderAll();
         toast(
             changed
-                ? 'Tavoli rinumerati da T1 a T' + state.tables.length + ': numerazione continua.'
-                : 'La numerazione è già continua da T1 a T' + state.tables.length + '.',
+                ? 'Tavoli rinumerati in ogni sala secondo la posizione.'
+                : 'La numerazione per sala è già aggiornata.',
             changed ? 'success' : 'info'
         );
         return true;
     }
 
-    function requestRenumber(button) {
-        if (state.groups.length) {
-            nudge(button);
-            toast('Separa i tavoli uniti prima di rinumerare.', 'warning');
-            return;
-        }
-
-        if (button.dataset.confirming === '1') {
-            window.clearTimeout(renumberTimer);
-            button.dataset.confirming = '0';
-            button.classList.remove('is-danger');
-            renumberTables();
-            return;
-        }
-
-        button.dataset.confirming = '1';
-        button.classList.add('is-danger');
-        button.textContent = 'Conferma rinumerazione';
-        renumberTimer = window.setTimeout(function () {
-            button.dataset.confirming = '0';
-            button.classList.remove('is-danger');
-            button.textContent = 'Rinumera tavoli';
-        }, 3500);
-    }
-
     function addTableToRoom(roomId) {
-        if (!editRoomsMode) return;
-
         const room = getRoom(roomId);
         if (!room) return;
 
@@ -2071,7 +2189,8 @@
         saveConfig();
         renderAll();
         toast(
-            'Tavolo T' + id + ' aggiunto in ' + room.name + ' con 3 posti: regola i posti dal pannello.',
+            'Tavolo ' + tableLabel(id) + ' aggiunto in ' + room.name +
+            ' con 3 posti: la numerazione della sala è stata aggiornata.',
             'success'
         );
     }
@@ -2079,6 +2198,12 @@
     function requestDeleteTable(tableId, button) {
         const table = getTable(tableId);
         if (!table) return;
+
+        if (table.groupId !== null) {
+            nudge(button);
+            toast(tableLabel(table.id) + ' fa parte di un gruppo: dividi i tavoli uniti per eliminarlo.', 'warning');
+            return;
+        }
 
         if (tableReservations(tableId).length) {
             nudge(button);
@@ -2111,6 +2236,7 @@
             return;
         }
 
+        const removedLabel = tableLabel(table.id);
         room.layout = room.layout.filter(function (item) {
             return !(item.kind === 'table' && item.id === table.id);
         });
@@ -2128,57 +2254,17 @@
         saveConfig();
         renderAll();
         toast(
-            'Tavolo T' + table.id + ' eliminato: il numero T' + table.id + ' tornerà disponibile.',
+            'Tavolo ' + removedLabel + ' eliminato: gli altri tavoli della sala sono stati rinumerati.',
             'success'
         );
-    }
-
-    function requestFactorySetup(button) {
-        if (state.reservations.length) {
-            nudge(button);
-            toast(
-                'Per ripristinare la disposizione iniziale annulla prima le prenotazioni.',
-                'warning'
-            );
-            return;
-        }
-
-        if (button.dataset.confirming === '1') {
-            window.clearTimeout(deleteTableTimer);
-            applySetup(defaultSetup());
-            saveConfig();
-            saveState();
-            selection = [];
-            renderAll();
-            toast('Disposizione iniziale ripristinata e salvata.', 'success');
-            return;
-        }
-
-        button.dataset.confirming = '1';
-        button.classList.add('is-danger');
-        button.textContent = 'Conferma disposizione iniziale';
-        deleteTableTimer = window.setTimeout(function () {
-            button.dataset.confirming = '0';
-            button.classList.remove('is-danger');
-            button.textContent = 'Ripristina disposizione iniziale';
-        }, 3500);
     }
 
     /* ---------- Interactions: combine / separate ---------- */
 
     function onCombine() {
-        if (editRoomsMode) {
-            nudge(els.combineBtn);
-            toast(
-                'In modifica sale i tavoli non si uniscono: termina la modifica e usa “Unisci tavoli”.',
-                'info'
-            );
-            return;
-        }
-
         if (selection.some(function (s) { return s.kind === 'group'; })) {
             nudge(els.combineBtn);
-            toast('Un gruppo è già un tavolo unico: separalo prima di unirlo ad altri tavoli.', 'warning');
+            toast('Un gruppo è già un tavolo unico: dividilo prima di unirlo ad altri tavoli.', 'warning');
             return;
         }
 
@@ -2228,7 +2314,9 @@
         // Un tavolo con prenotazioni in altri slot non può entrare in un gruppo:
         // la prenotazione resterebbe orfana quando lo slot non è visualizzato.
         const otherSlotReservation = state.reservations.find(function (r) {
-            return r.target && r.target.kind === 'table' && ids.indexOf(r.target.id) !== -1;
+            return reservationTargets(r).some(function (target) {
+                return target.kind === 'table' && ids.indexOf(target.id) !== -1;
+            });
         });
         if (otherSlotReservation) {
             nudge(els.combineBtn);
@@ -2289,7 +2377,7 @@
         saveState();
         renderAll();
         toast(
-            'Tavoli T' + plan.ids.join(' + T') + ' uniti in un unico tavolo da ' +
+            'Tavoli ' + plan.ids.map(tableLabel).join(' + ') + ' uniti in un unico tavolo da ' +
             plan.totalSeats + ' posti (' + plan.room.name + ').',
             'success'
         );
@@ -2298,7 +2386,7 @@
     function onSeparate() {
         if (selection.length !== 1 || selection[0].kind !== 'group') {
             nudge(els.separateBtn);
-            toast('Seleziona un gruppo nella pianta per separarlo nei tavoli singoli.', 'info');
+            toast('Seleziona un gruppo nella pianta per dividerlo nei tavoli singoli.', 'info');
             return;
         }
 
@@ -2313,13 +2401,13 @@
         // Il gruppo è un'entità unica in tutti gli slot: per separarlo
         // non deve avere prenotazioni in nessun orario.
         const groupReservation = state.reservations.find(function (r) {
-            return r.target && r.target.kind === 'group' && r.target.id === group.id;
+            return reservationHasTarget(r, 'group', group.id);
         });
         if (groupReservation) {
             nudge(els.separateBtn);
             toast(
                 'Il gruppo ha una prenotazione il ' + formatDate(groupReservation.date) +
-                ' alle ' + groupReservation.time + ': annullala per separarlo.',
+                ' alle ' + groupReservation.time + ': annullala per dividerlo.',
                 'warning'
             );
             return;
@@ -2373,7 +2461,7 @@
         saveState();
         renderAll();
         toast(
-            'Gruppo separato: i tavoli T' + group.memberIds.join(', T') +
+            'Gruppo diviso: i tavoli ' + group.memberIds.map(tableLabel).join(', ') +
             ' tornano singoli (' + totalSeats + ' posti totali, ' + room.name + ').',
             'success'
         );
@@ -2383,6 +2471,7 @@
 
     function onMoveToggle() {
         assigningReservationId = null;
+        assignSelection = [];
         if (editReservationId !== null) resetEditState();
 
         if (moveMode) {
@@ -2495,7 +2584,7 @@
 
         movePicked = null;
         saveState();
-        if (editRoomsMode) saveConfig();
+        saveConfig();
         renderAll();
 
         if (sameRoom) {
@@ -2551,7 +2640,7 @@
 
         movePicked = null;
         saveState();
-        if (editRoomsMode) saveConfig();
+        saveConfig();
         renderAll();
         toast(movedName + ' spostato in ' + room.name + '. Scegli il prossimo tavolo.', 'success');
     }
@@ -2576,22 +2665,40 @@
         toast('Modifica annullata.', 'info');
     }
 
+    function onSelectTable() {
+        assigningReservationId = null;
+        assignSelection = [];
+        moveMode = false;
+        movePicked = null;
+        renderAll();
+
+        if (isMobileLayout()) {
+            setTab('sala');
+        } else {
+            const title = document.getElementById('floorTitle');
+            if (title) title.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        toast(
+            'Scegli uno o più tavoli nella pianta. Se la capienza non basta, aggiungi un altro tavolo; ' +
+            'poi torna a “Nuove prenotazioni” per confermare.',
+            'info'
+        );
+    }
+
     function startEdit(reservationId) {
         const reservation = getReservation(reservationId);
         if (!reservation) return;
 
-        if (editRoomsMode) {
-            editRoomsMode = false;
-        }
-
         editReservationId = reservation.id;
         assigningReservationId = null;
+        assignSelection = [];
         moveMode = false;
         movePicked = null;
 
-        selection = reservation.target
-            ? [{ kind: reservation.target.kind, id: reservation.target.id }]
-            : [];
+        selection = reservationTargets(reservation).map(function (target) {
+            return { kind: target.kind, id: target.id };
+        });
 
         els.date.value = reservation.date;
         setTimeValue(els.time, reservation.time);
@@ -2611,27 +2718,14 @@
         toast('Modifica della prenotazione di ' + reservation.name + '.', 'info');
     }
 
-    /* ---------- Interactions: assign a table later ---------- */
-
-    function reservationAtSlot(kind, id, date, time) {
-        return state.reservations.find(function (reservation) {
-            return reservation.target &&
-                reservation.target.kind === kind &&
-                reservation.target.id === id &&
-                reservation.date === date &&
-                reservation.time === time;
-        }) || null;
-    }
+    /* ---------- Interactions: assign tables later ---------- */
 
     function startAssign(reservationId) {
         const reservation = getReservation(reservationId);
-        if (!reservation || reservation.target) return;
-
-        if (editRoomsMode) {
-            editRoomsMode = false;
-        }
+        if (!reservation || reservationTargets(reservation).length) return;
 
         assigningReservationId = reservationId;
+        assignSelection = [];
         resetEditState();
         moveMode = false;
         movePicked = null;
@@ -2639,44 +2733,69 @@
         renderAll();
         if (isMobileLayout()) setTab('sala');
         toast(
-            'Prenotazione di ' + reservation.name + ': scegli un tavolo o un gruppo libero ' +
-            'con almeno ' + reservation.guests + ' posti.',
+            'Prenotazione di ' + reservation.name + ': scegli uno o più tavoli liberi fino a ' +
+            reservation.guests + ' posti.',
             'info'
         );
     }
 
-    function assignReservationToEntity(entity) {
+    function assignSelectionSeats() {
+        return assignSelection.reduce(function (total, entity) {
+            return total + entitySeats(entity);
+        }, 0);
+    }
+
+    function toggleAssignEntity(entity) {
         const reservation = getReservation(assigningReservationId);
         if (!reservation) {
             assigningReservationId = null;
+            assignSelection = [];
             renderAll();
             return;
         }
 
-        const capacity = entitySeats(entity);
-        if (capacity < reservation.guests) {
-            nudge(els.statusLine);
-            toast(
-                'Capienza insufficiente: ' + shortName(entity) + ' ha ' + capacity +
-                ' posti, servono ' + reservation.guests + '.',
-                'warning'
-            );
+        const pickedIndex = assignSelection.findIndex(function (entry) {
+            return entry.kind === entity.kind && entry.id === entity.id;
+        });
+
+        if (pickedIndex !== -1) {
+            assignSelection.splice(pickedIndex, 1);
+            renderRooms();
+            renderSelectionUI();
             return;
         }
 
-        if (reservationAtSlot(entity.kind, entity.id, reservation.date, reservation.time)) {
+        if (reservationAtSlot(entity.kind, entity.id, reservation.date, reservation.time, reservation.id)) {
             nudge(els.statusLine);
             toast(shortName(entity) + ' è già prenotato in questo slot: scegli un altro tavolo.', 'warning');
             return;
         }
 
-        reservation.target = { kind: entity.kind, id: entity.id };
+        assignSelection.push({ kind: entity.kind, id: entity.id });
+        const capacity = assignSelectionSeats();
+
+        if (capacity < reservation.guests) {
+            renderRooms();
+            renderSelectionUI();
+            toast(
+                'Aggiunti ' + capacity + ' posti su ' + reservation.guests +
+                ': seleziona un altro tavolo.',
+                'info'
+            );
+            return;
+        }
+
+        reservation.targets = assignSelection.map(function (target) {
+            return { kind: target.kind, id: target.id };
+        });
+        const assignedLabel = targetsLabel(reservation.targets);
         assigningReservationId = null;
+        assignSelection = [];
         saveState();
         renderAll();
         if (isMobileLayout()) setTab('prenotazioni');
         toast(
-            'Prenotazione di ' + reservation.name + ' assegnata a ' + shortName(entity) + '.',
+            'Prenotazione di ' + reservation.name + ' assegnata a ' + assignedLabel + '.',
             'success'
         );
     }
@@ -2748,31 +2867,49 @@
             firstInvalid = firstInvalid || els.guestPhone;
         }
 
-        const single = selection.length === 1 ? selection[0] : null;
-        const capacity = single ? entitySeats(single) : totalCapacity();
-        const multiSelection = selection.length > 1;
+        const targets = selection.map(function (target) {
+            return { kind: target.kind, id: target.id };
+        });
+        const capacity = targets.length ? selectionSeats() : totalCapacity();
         let editingReservation = editReservationId !== null ? getReservation(editReservationId) : null;
         if (editReservationId !== null && !editingReservation) {
             editReservationId = null;
         }
 
-        const conflict = single && dateIso && timeValue
-            ? reservationAtSlot(single.kind, single.id, dateIso, timeValue)
-            : null;
-        const hasConflict = !!conflict &&
-            (!editingReservation || conflict.id !== editingReservation.id);
+        const conflicts = [];
+        if (dateIso && timeValue) {
+            targets.forEach(function (target) {
+                const conflict = reservationAtSlot(
+                    target.kind,
+                    target.id,
+                    dateIso,
+                    timeValue,
+                    editingReservation ? editingReservation.id : null
+                );
+                if (conflict) conflicts.push({ target: target, reservation: conflict });
+            });
+        }
+        const hasConflict = conflicts.length > 0;
 
         if (!Number.isInteger(guests) || guests < 1) {
             setFieldError(els.guestCount, 'Indica almeno 1 ospite.');
             firstInvalid = firstInvalid || els.guestCount;
         } else if (guests > capacity) {
-            setFieldError(els.guestCount, capacityError(capacity, !!single));
+            setFieldError(els.guestCount, capacityError(capacity, targets.length === 1));
             firstInvalid = firstInvalid || els.guestCount;
         }
 
         if (hasConflict) {
             nudge(els.targetInfo);
-            toast(fullName(single) + ' è già prenotato in questo slot.', 'warning');
+            const names = conflicts.map(function (entry) {
+                return shortName(entry.target) + ' (' + entry.reservation.name + ')';
+            }).join(', ');
+            toast(
+                names + (conflicts.length === 1
+                    ? ' è già prenotato in questo slot.'
+                    : ' sono già prenotati in questo slot.'),
+                'warning'
+            );
         }
 
         if (firstInvalid) {
@@ -2781,35 +2918,31 @@
             return;
         }
 
-        if (multiSelection) {
-            nudge(els.targetInfo);
-            toast(
-                'Hai selezionato più tavoli: uniscili o selezionane uno. ' +
-                'Per prenotare senza tavolo, deseleziona tutto.',
-                'info'
-            );
-            return;
-        }
-
         if (!dateIso || !timeValue) return;
         if (hasConflict) return;
 
         if (editingReservation) {
+            const targetCopies = targets.map(function (target) {
+                return { kind: target.kind, id: target.id };
+            });
             editingReservation.name = name;
             editingReservation.phone = phone;
             editingReservation.guests = guests;
             editingReservation.note = note;
             editingReservation.date = dateIso;
             editingReservation.time = timeValue;
-            editingReservation.target = single
-                ? { kind: single.kind, id: single.id }
-                : null;
+            editingReservation.targets = targetCopies;
+            delete editingReservation.target;
 
             resetEditState();
             saveState();
             selection = [];
             renderAll();
-            toast('Prenotazione di ' + name + ' aggiornata.', 'success');
+            toast(
+                'Prenotazione di ' + name + ' aggiornata' +
+                (targetCopies.length ? ' · ' + targetsLabel(targetCopies) : ' · senza tavolo') + '.',
+                'success'
+            );
             if (isMobileLayout()) {
                 setTab('prenotazioni');
             } else {
@@ -2818,6 +2951,9 @@
             return;
         }
 
+        const targetCopies = targets.map(function (target) {
+            return { kind: target.kind, id: target.id };
+        });
         state.reservations.push({
             id: state.nextReservationId++,
             name: name,
@@ -2826,7 +2962,7 @@
             note: note,
             date: dateIso,
             time: timeValue,
-            target: single ? { kind: single.kind, id: single.id } : null
+            targets: targetCopies
         });
 
         saveState();
@@ -2837,9 +2973,9 @@
         selection = [];
         renderAll();
         toast(
-            single
+            targetCopies.length
                 ? 'Prenotazione creata per ' + name + ' · ' + guests + ' ospiti, ' +
-                  shortName(single) + ' alle ' + timeValue + '.'
+                  targetsLabel(targetCopies) + ' alle ' + timeValue + '.'
                 : 'Prenotazione creata per ' + name + ' · ' + guests +
                   ' ospiti, senza tavolo. Assegnalo dalla lista.',
             'success'
@@ -2891,7 +3027,10 @@
         if (!reservation) return;
 
         if (editReservationId === reservationId) resetEditState();
-        if (assigningReservationId === reservationId) assigningReservationId = null;
+        if (assigningReservationId === reservationId) {
+            assigningReservationId = null;
+            assignSelection = [];
+        }
 
         state.reservations = state.reservations.filter(function (r) {
             return r.id !== reservationId;
@@ -2916,8 +3055,8 @@
             moveMode = false;
             movePicked = null;
             assigningReservationId = null;
+            assignSelection = [];
             editReservationId = null;
-            editRoomsMode = false;
             els.guestName.value = '';
             els.guestPhone.value = '';
             els.guestCount.value = '';
@@ -3152,6 +3291,7 @@
         if (!els.date.value) els.date.value = todayIso();
         if (!els.time.value) setTimeValue(els.time, '20:00');
         assigningReservationId = null;
+        assignSelection = [];
         syncSlotFields();
         clearCancelConfirmations();
         renderAll();
@@ -3465,34 +3605,54 @@
             const id = Number(rawReservation.id);
             if (!Number.isInteger(id) || id < 1 || reservationIds.has(id)) continue;
 
-            const rawTarget = rawReservation.target;
+            const rawTargets = Array.isArray(rawReservation.targets)
+                ? rawReservation.targets
+                : (rawReservation.target ? [rawReservation.target] : []);
+            const targets = [];
+            const seenTargets = new Set();
+            let invalidTarget = false;
             let capacity = 0;
-            let target = null;
 
-            if (rawTarget === null || rawTarget === undefined) {
-                capacity = tables.reduce(function (total, table) {
-                    return total + table.seats;
-                }, 0);
-            } else {
+            for (let j = 0; j < rawTargets.length; j++) {
+                const rawTarget = rawTargets[j];
+                if (!rawTarget || typeof rawTarget !== 'object') {
+                    invalidTarget = true;
+                    break;
+                }
+
                 const kind = rawTarget.kind;
                 const targetId = Number(rawTarget.id);
+                const key = kind + ':' + targetId;
+                if (seenTargets.has(key)) {
+                    invalidTarget = true;
+                    break;
+                }
 
                 if (kind === 'table' && tableIds.has(targetId) && !groupedTableIds.has(targetId)) {
                     const table = tables.find(function (t) { return t.id === targetId; });
-                    capacity = table ? table.seats : 0;
-                    target = { kind: kind, id: targetId };
+                    capacity += table ? table.seats : 0;
                 } else if (kind === 'group' && groupIds.has(targetId)) {
                     const group = groups.find(function (g) { return g.id === targetId; });
-                    capacity = group
+                    capacity += group
                         ? group.memberIds.reduce(function (total, memberId) {
                             const member = tables.find(function (t) { return t.id === memberId; });
                             return total + (member ? member.seats : 0);
                         }, 0)
                         : 0;
-                    target = { kind: kind, id: targetId };
                 } else {
-                    continue;
+                    invalidTarget = true;
+                    break;
                 }
+
+                seenTargets.add(key);
+                targets.push({ kind: kind, id: targetId });
+            }
+
+            if (invalidTarget) continue;
+            if (!targets.length) {
+                capacity = tables.reduce(function (total, table) {
+                    return total + table.seats;
+                }, 0);
             }
 
             const guests = Number(rawReservation.guests);
@@ -3511,7 +3671,7 @@
                 guests: guests,
                 date: date,
                 time: time,
-                target: target
+                targets: targets
             });
         }
 
@@ -3675,6 +3835,518 @@
         return { rooms: rooms, tables: tables };
     }
 
+    /* ---------- Impostazioni: sale e tavoli ---------- */
+
+    function openSettings() {
+        if (!els.settingsPanel || !els.settingsPanel.hidden) return;
+        if (els.printDialog && !els.printDialog.hidden) closePrintDialog();
+
+        lastFocusBeforeSettings = document.activeElement;
+        renderSettings();
+        els.settingsPanel.hidden = false;
+        document.body.classList.add('settings-open');
+        if (els.settingsBtn) els.settingsBtn.setAttribute('aria-expanded', 'true');
+
+        const first = els.settingsCloseBtn;
+        if (first) first.focus();
+    }
+
+    function closeSettings() {
+        if (!els.settingsPanel || els.settingsPanel.hidden) return;
+
+        els.settingsPanel.hidden = true;
+        document.body.classList.remove('settings-open');
+        if (els.settingsBtn) els.settingsBtn.setAttribute('aria-expanded', 'false');
+
+        if (lastFocusBeforeSettings && document.contains(lastFocusBeforeSettings)) {
+            lastFocusBeforeSettings.focus();
+        } else if (els.settingsBtn) {
+            els.settingsBtn.focus();
+        }
+        lastFocusBeforeSettings = null;
+    }
+
+    function settingsSeatControls(table) {
+        const controls = el('div', 'seat-controls settings-seat-controls');
+
+        const minus = el('button', 'seat-step', '−');
+        minus.type = 'button';
+        minus.dataset.settingsStep = '-1';
+        minus.dataset.tableId = String(table.id);
+        minus.setAttribute('aria-label', 'Riduci di un posto al tavolo ' + tableLabel(table.id));
+        minus.disabled = table.seats <= 1;
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'seat-input settings-seat-input';
+        input.dataset.settingsSeat = String(table.id);
+        input.min = '1';
+        input.max = String(MAX_SEATS);
+        input.step = '1';
+        input.inputMode = 'numeric';
+        input.value = String(table.seats);
+        input.setAttribute('aria-label', 'Numero di posti del tavolo ' + tableLabel(table.id));
+
+        const plus = el('button', 'seat-step', '+');
+        plus.type = 'button';
+        plus.dataset.settingsStep = '1';
+        plus.dataset.tableId = String(table.id);
+        plus.setAttribute('aria-label', 'Aggiungi un posto al tavolo ' + tableLabel(table.id));
+        plus.disabled = table.seats >= MAX_SEATS;
+
+        controls.appendChild(minus);
+        controls.appendChild(input);
+        controls.appendChild(plus);
+        return controls;
+    }
+
+    function renderSettingsTable(table) {
+        const row = el('div', 'settings-table');
+        row.dataset.tableId = String(table.id);
+
+        const name = el('span', 'settings-table-name', tableLabel(table.id));
+        if (table.groupId !== null) {
+            name.appendChild(el('span', 'settings-table-tag', 'unito'));
+        }
+        row.appendChild(name);
+
+        row.appendChild(settingsSeatControls(table));
+
+        const actions = el('div', 'settings-table-actions');
+
+        const move = el('button', 'settings-move', 'Sposta');
+        move.type = 'button';
+        move.dataset.settingsMove = String(table.id);
+        move.setAttribute('aria-label', 'Sposta il tavolo ' + tableLabel(table.id));
+        if (table.groupId !== null) {
+            move.disabled = true;
+            move.title = 'Dividi il gruppo per spostare il tavolo.';
+        }
+        actions.appendChild(move);
+
+        const remove = el('button', 'settings-delete', 'Elimina');
+        remove.type = 'button';
+        remove.dataset.settingsDelete = String(table.id);
+        remove.setAttribute('aria-label', 'Elimina il tavolo ' + tableLabel(table.id));
+        if (state.tables.length <= 1) {
+            remove.disabled = true;
+            remove.title = 'Deve restare almeno un tavolo.';
+        }
+        actions.appendChild(remove);
+
+        row.appendChild(actions);
+        return row;
+    }
+
+    function nextRoomId() {
+        let index = 1;
+        while (getRoom('sala' + index)) index++;
+        return 'sala' + index;
+    }
+
+    function nextRoomName() {
+        let index = 1;
+        while (state.rooms.some(function (room) { return room.name === 'Sala ' + index; })) {
+            index++;
+        }
+        return 'Sala ' + index;
+    }
+
+    function addRoom() {
+        const room = {
+            id: nextRoomId(),
+            name: nextRoomName(),
+            cols: 5,
+            rows: 9,
+            layout: []
+        };
+        state.rooms.push(room);
+        saveState();
+        saveConfig();
+        renderAll();
+
+        const input = els.settingsBody.querySelector(
+            '.settings-room-name[data-settings-room-name="' + room.id + '"]'
+        );
+        if (input) {
+            input.focus();
+            input.select();
+        }
+        toast(
+            room.name + ' aggiunta (5 × 9): aggiungi i tavoli e trascinali con “Sposta”.',
+            'success'
+        );
+    }
+
+    function requestRemoveRoom(roomId, button) {
+        const room = getRoom(roomId);
+        if (!room) return;
+
+        if (state.rooms.length <= 1) {
+            nudge(button);
+            toast('Deve restare almeno una sala.', 'warning');
+            return;
+        }
+
+        const tables = state.tables.filter(function (table) {
+            return table.roomId === roomId;
+        });
+        if (tables.length) {
+            nudge(button);
+            toast(
+                room.name + ' contiene ' + tables.length +
+                (tables.length === 1 ? ' tavolo' : ' tavoli') +
+                ': eliminali prima di rimuovere la sala.',
+                'warning'
+            );
+            return;
+        }
+
+        if (button.dataset.confirming === '1') {
+            window.clearTimeout(roomDeleteTimer);
+            state.rooms = state.rooms.filter(function (entry) { return entry.id !== room.id; });
+            saveState();
+            saveConfig();
+            renderAll();
+            toast(room.name + ' rimossa.', 'success');
+            return;
+        }
+
+        button.dataset.confirming = '1';
+        button.classList.add('is-danger');
+        button.textContent = 'Conferma rimozione';
+        roomDeleteTimer = window.setTimeout(function () {
+            if (!button.isConnected) return;
+            button.dataset.confirming = '0';
+            button.classList.remove('is-danger');
+            button.textContent = 'Rimuovi sala';
+        }, 3500);
+    }
+
+    function startMoveFromSettings(tableId) {
+        const table = getTable(tableId);
+        if (!table) return;
+        if (table.groupId !== null) {
+            toast('Dividi il gruppo prima di spostare il tavolo.', 'warning');
+            return;
+        }
+
+        closeSettings();
+        assigningReservationId = null;
+        assignSelection = [];
+        moveMode = true;
+        movePicked = { kind: 'table', id: table.id };
+        renderAll();
+        if (isMobileLayout()) setTab('sala');
+        toast(
+            tableLabel(table.id) + ' pronto: scegli una cella libera o un altro tavolo, ' +
+            'anche in un\'altra sala.',
+            'info'
+        );
+    }
+
+    function renderSettings() {
+        if (!els.settingsBody) return;
+
+        els.settingsSummary.textContent = state.rooms.length + ' sale · ' +
+            state.tables.length + ' tavoli · ' + totalCapacity() + ' posti';
+
+        const fragment = document.createDocumentFragment();
+
+        const roomsActions = el('div', 'settings-rooms-actions');
+        roomsActions.appendChild(el(
+            'p',
+            'settings-rooms-hint',
+            'Aggiungi una sala vuota e riempila con i tavoli. La numerazione riparte da T1 in ogni sala.'
+        ));
+        const addRoomBtn = el('button', 'btn btn-add-room', '+ Sala');
+        addRoomBtn.type = 'button';
+        addRoomBtn.dataset.settingsAddRoom = '1';
+        addRoomBtn.setAttribute('aria-label', 'Aggiungi una nuova sala');
+        roomsActions.appendChild(addRoomBtn);
+        fragment.appendChild(roomsActions);
+
+        if (state.groups.length) {
+            fragment.appendChild(el(
+                'p',
+                'settings-alert',
+                'Ci sono tavoli uniti: dividili dalla pianta per rendere permanenti le modifiche alla disposizione.'
+            ));
+        }
+
+        state.rooms.forEach(function (room) {
+            const card = el('section', 'settings-room');
+            card.dataset.settingsRoom = room.id;
+
+            const head = el('div', 'settings-room-head');
+
+            const name = document.createElement('input');
+            name.type = 'text';
+            name.className = 'settings-room-name';
+            name.value = room.name;
+            name.dataset.settingsRoomName = room.id;
+            name.maxLength = 30;
+            name.setAttribute('aria-label', 'Nome della sala');
+            head.appendChild(name);
+
+            const tables = orderedRoomTables(room);
+            const seats = tables.reduce(function (sum, table) {
+                return sum + table.seats;
+            }, 0);
+            head.appendChild(el(
+                'span',
+                'settings-room-meta',
+                tables.length + ' tavoli · ' + seats + ' posti'
+            ));
+            card.appendChild(head);
+
+            const list = el('div', 'settings-table-list');
+            if (!tables.length) {
+                list.appendChild(el(
+                    'p',
+                    'settings-room-empty',
+                    'Nessun tavolo in questa sala.'
+                ));
+            }
+            tables.forEach(function (table) {
+                list.appendChild(renderSettingsTable(table));
+            });
+            card.appendChild(list);
+
+            const actions = el('div', 'settings-room-actions');
+            const add = el('button', 'btn btn-add-table settings-add', '+ Tavolo');
+            add.type = 'button';
+            add.dataset.settingsAdd = room.id;
+            add.setAttribute('aria-label', 'Aggiungi un tavolo in ' + room.name);
+            actions.appendChild(add);
+
+            const remove = el('button', 'settings-remove-room', 'Rimuovi sala');
+            remove.type = 'button';
+            remove.dataset.settingsRemoveRoom = room.id;
+            remove.setAttribute('aria-label', 'Rimuovi la sala ' + room.name);
+            if (state.rooms.length <= 1) {
+                remove.disabled = true;
+                remove.title = 'Deve restare almeno una sala.';
+            }
+            actions.appendChild(remove);
+            card.appendChild(actions);
+
+            fragment.appendChild(card);
+        });
+
+        els.settingsBody.replaceChildren(fragment);
+    }
+
+    function commitSettingsSeat(input) {
+        const table = getTable(Number(input.dataset.settingsSeat));
+        if (!table) return;
+
+        const result = applyTableSeats(table.id, Number(input.value));
+        if (!result.ok) {
+            toast(result.error, 'warning');
+            input.value = String(table.seats);
+            return;
+        }
+
+        syncForm();
+        renderSettings();
+        const next = els.settingsBody.querySelector(
+            '.settings-seat-input[data-settings-seat="' + table.id + '"]'
+        );
+        if (next) {
+            next.focus();
+            next.select();
+        }
+    }
+
+    function onSettingsBodyClick(event) {
+        if (event.target.closest('[data-settings-add-room]')) {
+            addRoom();
+            return;
+        }
+
+        const move = event.target.closest('[data-settings-move]');
+        if (move) {
+            startMoveFromSettings(Number(move.dataset.settingsMove));
+            return;
+        }
+
+        const removeRoom = event.target.closest('[data-settings-remove-room]');
+        if (removeRoom) {
+            requestRemoveRoom(removeRoom.dataset.settingsRemoveRoom, removeRoom);
+            return;
+        }
+
+        const add = event.target.closest('[data-settings-add]');
+        if (add) {
+            if (state.groups.length) {
+                toast('Dividi i tavoli uniti prima di aggiungere un tavolo.', 'warning');
+                return;
+            }
+            addTableToRoom(add.dataset.settingsAdd);
+            return;
+        }
+
+        const remove = event.target.closest('[data-settings-delete]');
+        if (remove) {
+            requestDeleteTable(Number(remove.dataset.settingsDelete), remove);
+            return;
+        }
+
+        const step = event.target.closest('[data-settings-step]');
+        if (!step || step.disabled) return;
+
+        const tableId = Number(step.dataset.tableId);
+        const delta = Number(step.dataset.settingsStep);
+        const table = getTable(tableId);
+        if (!table) return;
+
+        const result = applyTableSeats(tableId, table.seats + delta);
+        if (!result.ok) {
+            toast(result.error, 'warning');
+            return;
+        }
+
+        syncForm();
+        renderSettings();
+        const next = els.settingsBody.querySelector(
+            '[data-settings-step="' + delta + '"][data-table-id="' + tableId + '"]'
+        );
+        if (next) next.focus();
+    }
+
+    function onSettingsBodyChange(event) {
+        const input = event.target;
+
+        if (input.classList.contains('settings-room-name')) {
+            const room = getRoom(input.dataset.settingsRoomName);
+            if (!room) return;
+
+            const next = input.value.trim();
+            if (!next) {
+                input.value = room.name;
+                toast('Il nome della sala non può essere vuoto.', 'warning');
+                return;
+            }
+            if (next === room.name) {
+                input.value = room.name;
+                return;
+            }
+
+            room.name = next.slice(0, 30);
+            saveState();
+            saveConfig();
+            renderAll();
+            toast('Sala rinominata in ' + room.name + '.', 'success');
+            return;
+        }
+
+        if (input.classList.contains('settings-seat-input')) {
+            commitSettingsSeat(input);
+        }
+    }
+
+    function armSettingsConfirm(button, confirmLabel, idleLabel, action) {
+        if (button.dataset.confirming === '1') {
+            window.clearTimeout(settingsConfirmTimer);
+            button.dataset.confirming = '0';
+            button.classList.remove('is-danger');
+            button.textContent = idleLabel;
+            action();
+            return;
+        }
+
+        button.dataset.confirming = '1';
+        button.classList.add('is-danger');
+        button.textContent = confirmLabel;
+        settingsConfirmTimer = window.setTimeout(function () {
+            button.dataset.confirming = '0';
+            button.classList.remove('is-danger');
+            button.textContent = idleLabel;
+        }, 3500);
+    }
+
+    function bindSettings() {
+        if (!els.settingsPanel) return;
+
+        els.settingsBtn.addEventListener('click', openSettings);
+        els.settingsCloseBtn.addEventListener('click', closeSettings);
+        els.settingsDoneBtn.addEventListener('click', closeSettings);
+
+        els.settingsPanel.addEventListener('click', function (event) {
+            if (event.target.closest('[data-settings-close]')) {
+                closeSettings();
+            }
+        });
+
+        els.settingsBody.addEventListener('click', onSettingsBodyClick);
+        els.settingsBody.addEventListener('change', onSettingsBodyChange);
+
+        els.settingsBody.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter') return;
+            if (!event.target.classList.contains('settings-seat-input') &&
+                !event.target.classList.contains('settings-room-name')) {
+                return;
+            }
+            event.preventDefault();
+            event.target.blur();
+        });
+
+        els.settingsFactoryBtn.addEventListener('click', function () {
+            if (state.reservations.length) {
+                toast('Per ripristinare la disposizione iniziale annulla prima le prenotazioni.', 'warning');
+                return;
+            }
+            if (state.groups.length) {
+                toast('Dividi i tavoli uniti prima di ripristinare la disposizione.', 'warning');
+                return;
+            }
+            armSettingsConfirm(
+                els.settingsFactoryBtn,
+                'Conferma ripristino',
+                'Ripristina disposizione iniziale',
+                function () {
+                    applySetup(defaultSetup());
+                    saveConfig();
+                    saveState();
+                    selection = [];
+                    renderAll();
+                    toast('Disposizione iniziale ripristinata e salvata.', 'success');
+                }
+            );
+        });
+
+        els.settingsPanel.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                closeSettings();
+                return;
+            }
+
+            if (event.key !== 'Tab') return;
+
+            const focusables = Array.prototype.filter.call(
+                els.settingsPanel.querySelectorAll('button, input'),
+                function (node) {
+                    return !node.disabled && node.offsetParent !== null;
+                }
+            );
+            if (!focusables.length) return;
+
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    }
+
     /* ---------- Events ---------- */
 
     function bindEvents() {
@@ -3684,25 +4356,15 @@
         els.combineBtn.addEventListener('click', onCombine);
         els.separateBtn.addEventListener('click', onSeparate);
         els.moveBtn.addEventListener('click', onMoveToggle);
-        els.editRoomsBtn.addEventListener('click', toggleEditRooms);
-        els.renumberBtn.addEventListener('click', function () {
-            requestRenumber(els.renumberBtn);
-        });
         els.resetBtn.addEventListener('click', onReset);
         els.installBtn.addEventListener('click', onInstallClick);
 
         els.rooms.addEventListener('click', function (event) {
-            const addTable = event.target.closest('[data-add-table]');
-            if (addTable) {
-                addTableToRoom(addTable.dataset.addTable);
-                return;
-            }
-
             const card = event.target.closest('.entity');
             if (card) {
                 const entity = { kind: card.dataset.kind, id: Number(card.dataset.id) };
                 if (assigningReservationId) {
-                    assignReservationToEntity(entity);
+                    toggleAssignEntity(entity);
                 } else if (moveMode) {
                     handleMovePick(entity);
                 } else {
@@ -3725,7 +4387,7 @@
                 event.preventDefault();
                 const entity = { kind: card.dataset.kind, id: Number(card.dataset.id) };
                 if (assigningReservationId) {
-                    assignReservationToEntity(entity);
+                    toggleAssignEntity(entity);
                 } else if (moveMode) {
                     handleMovePick(entity);
                 } else {
@@ -3744,7 +4406,18 @@
         els.form.addEventListener('submit', onSubmit);
         els.cancelEditBtn.addEventListener('click', cancelEdit);
 
+        if (els.selectTableBtn) {
+            els.selectTableBtn.addEventListener('click', onSelectTable);
+        }
+
         els.targetInfo.addEventListener('click', function (event) {
+            const remove = event.target.closest('[data-remove-target]');
+            if (remove) {
+                const parts = remove.dataset.removeTarget.split(':');
+                toggleSelection({ kind: parts[0], id: Number(parts[1]) });
+                return;
+            }
+
             const step = event.target.closest('[data-seat-step]');
             if (!step || step.disabled) return;
             stepTableSeats(Number(step.dataset.tableId), Number(step.dataset.seatStep));
@@ -3773,13 +4446,7 @@
         });
 
         els.guestCount.addEventListener('input', function () {
-            const single = selection.length === 1 ? selection[0] : null;
-            const capacity = single ? entitySeats(single) : totalCapacity();
-            const value = Number(els.guestCount.value);
-
-            if (els.guestCount.value !== '' && Number.isFinite(value) && value > capacity) {
-                setFieldError(els.guestCount, capacityError(capacity, !!single));
-            }
+            syncForm();
         });
 
         els.formDate.addEventListener('input', function () {
@@ -3802,8 +4469,16 @@
 
         document.addEventListener('keydown', function (event) {
             if (event.key !== 'Escape') return;
+            if (els.settingsPanel && !els.settingsPanel.hidden) return;
 
             if (assigningReservationId) {
+                if (assignSelection.length) {
+                    assignSelection = [];
+                    renderRooms();
+                    renderSelectionUI();
+                    toast('Tavoli deselezionati. Assegnazione ancora attiva.', 'info');
+                    return;
+                }
                 assigningReservationId = null;
                 renderAll();
                 toast('Assegnazione annullata.', 'info');

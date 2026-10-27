@@ -93,7 +93,7 @@
                     <circle cx="12" cy="12" r="8.4"></circle>
                     <path d="M12 8.4v7.2M8.4 12h7.2"></path>
                 </svg>
-                <span class="tab-text">Nuova</span>
+                <span class="tab-text">Nuove prenotazioni</span>
                 <span class="tab-dot" id="tabSelectionDot" hidden aria-hidden="true"></span>
             </button>
             <button type="button" class="tab is-active" id="tabSala" role="tab" aria-selected="true"
@@ -105,7 +105,7 @@
                     <rect x="3" y="14" width="7" height="7" rx="1.6"></rect>
                     <rect x="14" y="14" width="7" height="7" rx="1.6"></rect>
                 </svg>
-                <span class="tab-text">Sala</span>
+                <span class="tab-text">Pianta della sala</span>
             </button>
             <button type="button" class="tab" id="tabPrenotazioni" role="tab" aria-selected="false"
                 aria-controls="panelPrenotazioni" data-tab="prenotazioni" tabindex="-1">
@@ -123,29 +123,26 @@
 
         <main class="workspace" id="workspace">
             <section class="panel floor-panel" id="panelSala" role="tabpanel" aria-labelledby="floorTitle">
-                <div class="panel-head">
-                    <div>
-                        <h2 id="floorTitle">Pianta della sala</h2>
-                        <p class="panel-sub">Due sale indipendenti · capienze variabili · i tavoli uniti diventano un unico tavolo.</p>
-                    </div>
+                <div class="panel-head floor-head">
+                    <h2 id="floorTitle">Pianta della sala</h2>
                     <div class="toolbar">
-                        <button type="button" class="btn btn-edit-rooms" id="editRoomsBtn" aria-pressed="false" title="Modifica la disposizione permanente: aggiungi o elimina tavoli, cambia i posti e sposta i tavoli. La configurazione resta anche dopo Ripristina sala.">Modifica sale</button>
-                        <button type="button" class="btn btn-renumber" id="renumberBtn" hidden title="Rinumera i tavoli da T1 in ordine di sala, riga e colonna. Le prenotazioni seguono il proprio tavolo.">Rinumera tavoli</button>
-                        <button type="button" class="btn" id="moveBtn" title="Sposta un tavolo o un gruppo in qualsiasi cella libera o scambialo con un altro tavolo">Sposta tavoli</button>
+                        <button type="button" class="btn" id="moveBtn" title="Sposta un tavolo o un gruppo in qualsiasi cella libera o scambialo con un altro tavolo. La nuova disposizione viene salvata.">Sposta tavoli</button>
                         <button type="button" class="btn" id="combineBtn" title="Unisci i tavoli selezionati nella stessa area">Unisci tavoli</button>
-                        <button type="button" class="btn" id="separateBtn" title="Separa il gruppo selezionato">Separa tavoli</button>
+                        <button type="button" class="btn" id="separateBtn" title="Dividi il gruppo selezionato riportando i tavoli singoli">Dividi tavoli</button>
                     </div>
-                </div>
-
-                <div class="legend" aria-hidden="true">
-                    <span class="legend-item"><i class="dot dot-free"></i>Libero</span>
-                    <span class="legend-item"><i class="dot dot-booked"></i>Prenotato</span>
-                    <span class="legend-item"><i class="dot dot-group"></i>Gruppo unito</span>
-                    <span class="legend-item"><i class="dot dot-selected"></i>Selezionato</span>
+                    <button type="button" class="btn btn-icon btn-settings" id="settingsBtn"
+                        aria-label="Impostazioni" aria-haspopup="dialog" aria-expanded="false"
+                        title="Impostazioni: gestisci sale e tavoli">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </button>
                 </div>
 
                 <div class="rooms" id="roomsContainer"></div>
-                <p class="status-line" id="statusLine" aria-live="polite"></p>
+                <p class="sr-only" id="statusLine" aria-live="polite"></p>
             </section>
 
             <div class="side">
@@ -193,6 +190,17 @@
                         <input type="text" id="guestNote" placeholder="Allergie, seggiolone, compleanno…">
                     </div>
 
+                    <button type="button" class="btn btn-select-table btn-block" id="selectTableBtn">
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="3" width="7" height="7" rx="1.6"></rect>
+                            <rect x="14" y="3" width="7" height="7" rx="1.6"></rect>
+                            <rect x="3" y="14" width="7" height="7" rx="1.6"></rect>
+                            <rect x="14" y="14" width="7" height="7" rx="1.6"></rect>
+                        </svg>
+                        <span id="selectTableLabel">Seleziona tavolo</span>
+                    </button>
+
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-block" id="createBtn" aria-disabled="true">
                             Crea prenotazione
@@ -209,11 +217,37 @@
                     <h2 id="listTitle">Prenotazioni</h2>
                     <span class="badge" id="reservationCount">0</span>
                 </div>
-                <p class="panel-sub">Prenotazioni attive per lo slot selezionato.</p>
+                <p class="panel-sub" id="listSubtitle">Prenotazioni del giorno selezionato, divise tra pranzo e cena.</p>
                 <div class="reservation-list" id="reservationList"></div>
             </section>
             </div>
         </main>
+    </div>
+
+    <div class="settings" id="settingsPanel" hidden>
+        <div class="settings-backdrop" data-settings-close></div>
+        <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+            <header class="settings-head">
+                <div>
+                    <h2 id="settingsTitle">Impostazioni</h2>
+                    <p class="settings-sub" id="settingsSummary">—</p>
+                </div>
+                <button type="button" class="settings-close" id="settingsCloseBtn" aria-label="Chiudi impostazioni">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                        stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6L6 18"></path>
+                    </svg>
+                </button>
+            </header>
+
+            <div class="settings-body" id="settingsBody"></div>
+
+            <footer class="settings-foot">
+                <p class="settings-note">I tavoli sono numerati automaticamente in ogni sala in base alla loro posizione. Le modifiche restano salvate anche dopo “Ripristina sala”.</p>
+                <button type="button" class="btn btn-block btn-factory" id="settingsFactoryBtn">Ripristina disposizione iniziale</button>
+                <button type="button" class="btn btn-primary btn-block" id="settingsDoneBtn">Fine</button>
+            </footer>
+        </section>
     </div>
 
     <div class="print-dialog" id="printDialog" hidden>
