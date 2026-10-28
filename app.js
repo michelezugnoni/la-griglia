@@ -208,7 +208,8 @@
         document.body.classList.remove('print-plan', 'print-reservations');
 
         if (els.printSlotLabel) {
-            els.printSlotLabel.textContent = currentSlotLabel();
+            els.printSlotLabel.textContent = serviceBandLabel(els.time.value || '20:00') +
+                ' · ' + currentSlotLabel();
         }
 
         els.printDialog.hidden = false;
@@ -265,7 +266,8 @@
         }
 
         if (els.printSlotLine) {
-            els.printSlotLine.textContent = 'Slot: ' + currentSlotLabel();
+            els.printSlotLine.textContent = 'Servizio: ' + serviceBandLabel(els.time.value || '20:00') +
+                ' · ' + currentSlotLabel();
         }
         if (els.printStatsLine) {
             const parts = [
@@ -385,7 +387,7 @@
         els.totalFoot = document.getElementById('totalFoot');
         els.bookedFoot = document.getElementById('bookedFoot');
         els.freeFoot = document.getElementById('freeFoot');
-        els.moveBtn = document.getElementById('moveBtn');
+        els.moveExitBtn = document.getElementById('moveExitBtn');
         els.combineBtn = document.getElementById('combineBtn');
         els.separateBtn = document.getElementById('separateBtn');
         els.settingsBtn = document.getElementById('settingsBtn');
@@ -609,8 +611,8 @@
         return roomName(entityRoomId(kind, id));
     }
 
-    // Numera i tavoli da 1 a N dentro ogni sala, seguendo l'ordine visivo
-    // della pianta (dall'alto verso il basso, poi da sinistra a destra).
+    // Ordina i tavoli di una sala seguendo l'ordine visivo della pianta
+    // (dall'alto verso il basso, poi da sinistra a destra).
     function orderedRoomTableEntries(room) {
         if (!room) return [];
         const entries = [];
@@ -647,11 +649,22 @@
             .filter(Boolean);
     }
 
+    // Numerazione unica e progressiva su tutte le sale: la Sala 1 usa T1…Tn,
+    // la sala successiva riprende da Tn+1, seguendo l'ordine visivo.
+    function orderedGlobalTableEntries() {
+        const entries = [];
+        state.rooms.forEach(function (room) {
+            orderedRoomTableEntries(room).forEach(function (entry) {
+                entries.push(entry);
+            });
+        });
+        return entries;
+    }
+
     function tableLabel(tableId) {
         const table = getTable(tableId);
         if (!table) return 'T?';
-        const room = getRoom(table.roomId);
-        const index = orderedRoomTableEntries(room).findIndex(function (entry) {
+        const index = orderedGlobalTableEntries().findIndex(function (entry) {
             return entry.id === tableId;
         });
         return 'T' + (index >= 0 ? index + 1 : tableId);
@@ -865,9 +878,32 @@
         return { date: els.date.value, time: els.time.value };
     }
 
+    // Pranzo: fino alle 16:00. Cena: dalle 16:00 alle 22:00 comprese.
+    // Oltre le 22:00 il servizio non è più a turno pieno e si confronta l'ora esatta.
+    function serviceBandForTime(time) {
+        const minutes = timeToMinutes(time);
+        if (minutes < 16 * 60) return 'pranzo';
+        if (minutes <= 22 * 60) return 'cena';
+        return 'extra';
+    }
+
+    function serviceBandLabel(time) {
+        const band = serviceBandForTime(time);
+        if (band === 'pranzo') return 'Pranzo (10:00–16:00)';
+        if (band === 'cena') return 'Cena (16:00–22:00)';
+        return 'Dopo cena (dalle 22:00)';
+    }
+
+    function sameService(reservation, date, time) {
+        if (reservation.date !== date) return false;
+        const band = serviceBandForTime(time);
+        if (band === 'extra') return reservation.time === time;
+        return serviceBandForTime(reservation.time) === band;
+    }
+
     function matchesSlot(reservation) {
         const slot = currentSlot();
-        return reservation.date === slot.date && reservation.time === slot.time;
+        return sameService(reservation, slot.date, slot.time);
     }
 
     function reservationTargets(reservation) {
@@ -894,8 +930,7 @@
             if (excludeId !== undefined && excludeId !== null && reservation.id === excludeId) {
                 return false;
             }
-            return reservation.date === date &&
-                reservation.time === time &&
+            return sameService(reservation, date, time) &&
                 reservationHasTarget(reservation, kind, id);
         }) || null;
     }
@@ -1261,7 +1296,8 @@
         syncFormMode();
 
         const slot = currentSlot();
-        els.slotLabel.textContent = 'Slot attivo: ' + formatDate(slot.date) + ' · ' + slot.time;
+        els.slotLabel.textContent = 'Servizio ' + serviceBandLabel(slot.time) + ' · ' +
+            formatDate(slot.date) + ' · ' + slot.time;
 
         if (els.settingsPanel && !els.settingsPanel.hidden) {
             renderSettings();
@@ -1344,8 +1380,7 @@
         els.separateBtn.classList.toggle('is-active', canSeparate());
         els.separateBtn.setAttribute('aria-disabled', String(separateDisabled));
 
-        els.moveBtn.classList.toggle('is-active', moveMode);
-        els.moveBtn.textContent = moveMode ? 'Termina spostamento' : 'Sposta tavoli';
+        els.moveExitBtn.hidden = !moveMode;
 
         if (els.tabSelectionDot) {
             els.tabSelectionDot.hidden = selection.length === 0;
@@ -1372,7 +1407,7 @@
             (state.tables.length === 1 ? ' tavolo · ' : ' tavoli · ') + groupLabel;
         els.bookedFoot.textContent = activeCount > 0
             ? activeCount + (activeCount === 1 ? ' prenotazione attiva' : ' prenotazioni attive')
-            : 'Nessuna prenotazione in questo slot';
+            : 'Nessuna prenotazione in questo servizio';
         els.freeFoot.textContent = total > 0 ? percent + '% della capienza libero' : 'Sala non disponibile';
     }
 
@@ -1390,10 +1425,7 @@
     }
 
     function reservationBand(reservation) {
-        const minutes = timeToMinutes(reservation.time);
-        if (minutes < 16 * 60) return 'pranzo';
-        if (minutes <= 22 * 60) return 'cena';
-        return 'extra';
+        return serviceBandForTime(reservation.time);
     }
 
     function renderReservations() {
@@ -1622,7 +1654,7 @@
                 'p',
                 'target-note',
                 names + (conflicts.length === 1 ? ' è già prenotato' : ' sono già prenotati') +
-                ' in questo slot: scegli altri tavoli.'
+                ' in questo servizio: scegli altri tavoli.'
             ));
             els.createBtn.setAttribute('aria-disabled', 'true');
 
@@ -1651,8 +1683,8 @@
                     ? entityRoomName(targets[0].kind, targets[0].id) +
                         (targets[0].kind === 'group'
                             ? ' · tavolo unico con capienza già sommata.'
-                            : ' · disponibile per questo slot.')
-                    : 'Tavoli disponibili per questo slot: la prenotazione li occuperà tutti.'
+                            : ' · disponibile per questo servizio.')
+                    : 'Tavoli disponibili per questo servizio: la prenotazione li occuperà tutti.'
             ));
         }
 
@@ -2238,7 +2270,7 @@
 
         if (tables.some(function (t) { return !!activeReservation('table', t.id); })) {
             nudge(els.combineBtn);
-            toast('Uno dei tavoli è prenotato in questo slot: annulla la prenotazione per unirlo.', 'warning');
+            toast('Uno dei tavoli è prenotato in questo servizio: annulla la prenotazione per unirlo.', 'warning');
             return;
         }
 
@@ -2400,6 +2432,23 @@
 
     /* ---------- Interactions: free move ---------- */
 
+    function startMoveMode() {
+        assigningReservationId = null;
+        assignSelection = [];
+        if (editReservationId !== null) resetEditState();
+
+        moveMode = true;
+        movePicked = null;
+        clearSelection();
+        renderAll();
+        if (isMobileLayout()) setTab('sala');
+        toast(
+            'Spostamento attivo: scegli un tavolo, poi una cella libera o un altro tavolo, ' +
+            'anche in un\'altra sala.',
+            'info'
+        );
+    }
+
     function onMoveToggle() {
         assigningReservationId = null;
         assignSelection = [];
@@ -2413,11 +2462,7 @@
             return;
         }
 
-        moveMode = true;
-        movePicked = null;
-        clearSelection();
-        renderAll();
-        toast('Spostamento: scegli un tavolo, poi una cella libera o un altro tavolo, anche in un\'altra sala.', 'info');
+        startMoveMode();
     }
 
     function handleMovePick(entity) {
@@ -2698,7 +2743,7 @@
 
         if (reservationAtSlot(entity.kind, entity.id, reservation.date, reservation.time, reservation.id)) {
             nudge(els.statusLine);
-            toast(shortName(entity) + ' è già prenotato in questo slot: scegli un altro tavolo.', 'warning');
+            toast(shortName(entity) + ' è già prenotato in questo servizio: scegli un altro tavolo.', 'warning');
             return;
         }
 
@@ -2837,8 +2882,8 @@
             }).join(', ');
             toast(
                 names + (conflicts.length === 1
-                    ? ' è già prenotato in questo slot.'
-                    : ' sono già prenotati in questo slot.'),
+                    ? ' è già prenotato in questo servizio.'
+                    : ' sono già prenotati in questo servizio.'),
                 'warning'
             );
         }
@@ -3988,7 +4033,7 @@
         roomsActions.appendChild(el(
             'p',
             'settings-rooms-hint',
-            'Aggiungi una sala vuota e riempila con i tavoli. La numerazione riparte da T1 in ogni sala.'
+            'Aggiungi una sala vuota e riempila con i tavoli. La numerazione è progressiva su tutte le sale.'
         ));
         const addRoomBtn = el('button', 'btn btn-add-room', '+ Sala');
         addRoomBtn.type = 'button';
@@ -3996,6 +4041,14 @@
         addRoomBtn.setAttribute('aria-label', 'Aggiungi una nuova sala');
         roomsActions.appendChild(addRoomBtn);
         fragment.appendChild(roomsActions);
+
+        const moveBar = el('div', 'settings-move-bar');
+        const moveModeBtn = el('button', 'btn settings-move-mode', 'Sposta tavoli');
+        moveModeBtn.type = 'button';
+        moveModeBtn.dataset.settingsMoveMode = '1';
+        moveModeBtn.title = 'Sposta un tavolo o un gruppo in qualsiasi cella libera o scambialo con un altro tavolo.';
+        moveBar.appendChild(moveModeBtn);
+        fragment.appendChild(moveBar);
 
         if (state.groups.length) {
             fragment.appendChild(el(
@@ -4094,6 +4147,12 @@
     function onSettingsBodyClick(event) {
         if (event.target.closest('[data-settings-add-room]')) {
             addRoom();
+            return;
+        }
+
+        if (event.target.closest('[data-settings-move-mode]')) {
+            closeSettings();
+            startMoveMode();
             return;
         }
 
@@ -4287,7 +4346,7 @@
 
         els.combineBtn.addEventListener('click', onCombine);
         els.separateBtn.addEventListener('click', onSeparate);
-        els.moveBtn.addEventListener('click', onMoveToggle);
+        els.moveExitBtn.addEventListener('click', onMoveToggle);
         els.resetBtn.addEventListener('click', onReset);
         els.installBtn.addEventListener('click', onInstallClick);
 

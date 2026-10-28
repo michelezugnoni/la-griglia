@@ -126,9 +126,10 @@
                 <div class="panel-head floor-head">
                     <h2 id="floorTitle">Pianta della sala</h2>
                     <div class="toolbar">
-                        <button type="button" class="btn" id="moveBtn" title="Sposta un tavolo o un gruppo in qualsiasi cella libera o scambialo con un altro tavolo. La nuova disposizione viene salvata.">Sposta tavoli</button>
                         <button type="button" class="btn" id="combineBtn" title="Unisci i tavoli selezionati nella stessa area">Unisci tavoli</button>
                         <button type="button" class="btn" id="separateBtn" title="Dividi il gruppo selezionato riportando i tavoli singoli">Dividi tavoli</button>
+                        <button type="button" class="btn btn-exit-move" id="moveExitBtn" hidden
+                            title="Chiudi la modalità spostamento">Termina spostamento</button>
                     </div>
                     <button type="button" class="btn btn-icon btn-settings" id="settingsBtn"
                         aria-label="Impostazioni" aria-haspopup="dialog" aria-expanded="false"
@@ -243,7 +244,7 @@
             <div class="settings-body" id="settingsBody"></div>
 
             <footer class="settings-foot">
-                <p class="settings-note">I tavoli sono numerati automaticamente in ogni sala in base alla loro posizione. Le modifiche restano salvate anche dopo “Ripristina sala”.</p>
+                <p class="settings-note">I tavoli sono numerati automaticamente in modo progressivo su tutte le sale, in base alla loro posizione. Le modifiche restano salvate anche dopo “Ripristina sala”.</p>
                 <button type="button" class="btn btn-block btn-factory" id="settingsFactoryBtn">Ripristina disposizione iniziale</button>
                 <button type="button" class="btn btn-primary btn-block" id="settingsDoneBtn">Fine</button>
             </footer>
@@ -255,7 +256,7 @@
         <div class="print-sheet" role="dialog" aria-modal="true" aria-labelledby="printTitle"
             aria-describedby="printSub">
             <h2 id="printTitle">Cosa vuoi stampare?</h2>
-            <p class="print-sheet-sub" id="printSub">Slot attivo: <span id="printSlotLabel">—</span></p>
+            <p class="print-sheet-sub" id="printSub">Servizio attivo: <span id="printSlotLabel">—</span></p>
             <div class="print-options">
                 <button type="button" class="print-option" data-print-mode="plan">
                     <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"
@@ -266,7 +267,7 @@
                         <rect x="14" y="14" width="7" height="7" rx="1.6"></rect>
                     </svg>
                     <span class="print-option-title">Pianta della sala</span>
-                    <span class="print-option-sub">Tavoli, gruppi e nomi delle prenotazioni dello slot selezionato.</span>
+                    <span class="print-option-sub">Tavoli, gruppi e nomi delle prenotazioni del servizio selezionato.</span>
                 </button>
                 <button type="button" class="print-option" data-print-mode="reservations">
                     <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"

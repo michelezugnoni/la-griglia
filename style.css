@@ -1891,8 +1891,11 @@ form {
         justify-content: stretch;
     }
 
-    #moveBtn {
+    #moveExitBtn {
         grid-column: 1 / -1;
+        height: 36px;
+        min-height: 36px;
+        padding: 4px 10px;
     }
 
     #combineBtn,
@@ -2506,6 +2509,33 @@ body.settings-open {
 .settings-move:hover:not(:disabled) {
     background: #eaf0ff;
     border-color: #c7d7fb;
+}
+
+.settings-move-bar {
+    display: flex;
+    padding: 0 12px;
+}
+
+.settings-move-mode {
+    flex: 1;
+    color: var(--move);
+    background: #f3ecfe;
+    border-color: #ddcbfb;
+}
+
+.settings-move-mode:hover {
+    background: #ebe0fd;
+}
+
+.btn-exit-move {
+    color: #fffaf5;
+    background: var(--move);
+    border-color: var(--move);
+}
+
+.btn-exit-move:hover {
+    background: #6b2fd0;
+    border-color: #6b2fd0;
 }
 
 .settings-move:disabled {
