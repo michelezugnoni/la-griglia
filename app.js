@@ -551,6 +551,7 @@
             return {
                 id: table.id,
                 seats: table.seats,
+                number: Number(table.number),
                 groupId: null,
                 roomId: table.roomId
             };
@@ -558,6 +559,7 @@
 
         state.groups = [];
         state.reservations = [];
+        ensureTableNumbers();
         state.nextGroupId = 1;
         state.nextReservationId = 1;
         state.nextTableId = state.tables.reduce(function (max, table) {
@@ -649,25 +651,95 @@
             .filter(Boolean);
     }
 
-    // Numerazione unica e progressiva su tutte le sale: la Sala 1 usa T1…Tn,
-    // la sala successiva riprende da Tn+1, seguendo l'ordine visivo.
-    function orderedGlobalTableEntries() {
-        const entries = [];
-        state.rooms.forEach(function (room) {
-            orderedRoomTableEntries(room).forEach(function (entry) {
-                entries.push(entry);
+    // Ordine visivo globale dei tavoli: prima per sala, poi dall'alto verso
+    // il basso e da sinistra a destra. Serve solo per assegnare i numeri
+    // iniziali ai dati creati prima dell'introduzione dei numeri fissi.
+    function visualTableOrder(rooms, groups) {
+        const ids = [];
+        const seen = new Set();
+
+        rooms.forEach(function (room) {
+            const entries = [];
+
+            room.layout.forEach(function (item) {
+                if (item.kind === 'table') {
+                    entries.push({ id: item.id, col: item.col, row: item.row });
+                    return;
+                }
+
+                const group = groups.find(function (entry) { return entry.id === item.id; });
+                if (!group) return;
+                (group.offsets || []).forEach(function (offset) {
+                    entries.push({
+                        id: offset.id,
+                        col: item.col + offset.dCol,
+                        row: item.row + offset.dRow
+                    });
+                });
+            });
+
+            entries.sort(function (a, b) {
+                return a.row - b.row || a.col - b.col || a.id - b.id;
+            });
+
+            entries.forEach(function (entry) {
+                if (seen.has(entry.id)) return;
+                seen.add(entry.id);
+                ids.push(entry.id);
             });
         });
-        return entries;
+
+        return ids;
+    }
+
+    // Il numero è un dato permanente del tavolo: non cambia quando il tavolo
+    // viene spostato o riposizionato. Ai vecchi dati senza numero viene
+    // assegnata una numerazione progressiva secondo l'ordine visivo.
+    function ensureTableNumbers() {
+        const used = new Set();
+        let valid = state.tables.length > 0;
+
+        state.tables.forEach(function (table) {
+            const number = Number(table.number);
+            if (!Number.isInteger(number) || number < 1 || used.has(number)) {
+                valid = false;
+                return;
+            }
+            used.add(number);
+        });
+
+        if (valid) return;
+
+        const byId = new Map(state.tables.map(function (table) {
+            return [table.id, table];
+        }));
+        let next = 1;
+
+        visualTableOrder(state.rooms, state.groups).forEach(function (id) {
+            const table = byId.get(id);
+            if (!table) return;
+            table.number = next++;
+        });
+
+        state.tables.forEach(function (table) {
+            if (!Number.isInteger(table.number)) {
+                table.number = next++;
+            }
+        });
+    }
+
+    function nextTableNumber() {
+        return state.tables.reduce(function (max, table) {
+            const number = Number(table.number);
+            return Number.isInteger(number) && number > max ? number : max;
+        }, 0) + 1;
     }
 
     function tableLabel(tableId) {
         const table = getTable(tableId);
         if (!table) return 'T?';
-        const index = orderedGlobalTableEntries().findIndex(function (entry) {
-            return entry.id === tableId;
-        });
-        return 'T' + (index >= 0 ? index + 1 : tableId);
+        const number = Number(table.number);
+        return 'T' + (Number.isInteger(number) && number > 0 ? number : tableId);
     }
 
     function itemKey(kind, id) {
@@ -1204,11 +1276,16 @@
             'aria-label',
             room.name + ', TAVOLO ' + tableLabel(table.id) + ', ' + table.seats + ' posti, ' +
             (reservation
-                ? 'prenotato da ' + reservation.name + ' per ' + reservation.guests + ' ospiti'
+                ? 'prenotato da ' + reservation.name + ' per ' + reservation.guests +
+                    ' ospiti alle ' + reservation.time
                 : 'Libero')
         );
 
-        card.appendChild(el('span', 'entity-tag', 'Tavolo'));
+        const tag = el('span', 'entity-tag', 'Tavolo');
+        if (reservation) {
+            tag.appendChild(el('span', 'entity-time', ' · ore ' + reservation.time));
+        }
+        card.appendChild(tag);
         card.appendChild(el('span', 'entity-name', tableLabel(table.id)));
         card.appendChild(el(
             'span',
@@ -1240,14 +1317,20 @@
             room.name + ', GRUPPO · ' + group.memberIds.length + ' TAVOLI (' +
             group.memberIds.map(tableLabel).join(' + ') + '), ' +
             seats + ' posti, ' +
-            (reservation ? 'prenotato da ' + reservation.name : 'unito e libero')
+            (reservation
+                ? 'prenotato da ' + reservation.name + ' alle ' + reservation.time
+                : 'unito e libero')
         );
 
-        card.appendChild(el(
+        const groupTag = el(
             'span',
             'entity-tag',
             'Gruppo · ' + group.memberIds.length + ' tavoli'
-        ));
+        );
+        if (reservation) {
+            groupTag.appendChild(el('span', 'entity-time', ' · ore ' + reservation.time));
+        }
+        card.appendChild(groupTag);
         card.appendChild(el(
             'span',
             'entity-name',
@@ -2143,6 +2226,7 @@
         state.tables.push({
             id: id,
             seats: 3,
+            number: nextTableNumber(),
             groupId: null,
             roomId: room.id
         });
@@ -2153,7 +2237,7 @@
         renderAll();
         toast(
             'Tavolo ' + tableLabel(id) + ' aggiunto in ' + room.name +
-            ' con 3 posti: la numerazione della sala è stata aggiornata.',
+            ' con 3 posti: il numero resterà invariato anche se lo sposti.',
             'success'
         );
     }
@@ -3375,7 +3459,13 @@
             if (!Number.isInteger(id) || id < 1 || tableIds.has(id)) return false;
             if (!Number.isInteger(seats) || seats < 1 || seats > MAX_SEATS) return false;
             tableIds.add(id);
-            tables.push({ id: id, seats: seats, groupId: null, roomId: null });
+            tables.push({
+                id: id,
+                seats: seats,
+                number: Number(rawTable && rawTable.number),
+                groupId: null,
+                roomId: null
+            });
         }
 
         const groups = [];
@@ -3655,6 +3745,7 @@
         state.tables = tables;
         state.groups = groups;
         state.reservations = reservations;
+        ensureTableNumbers();
         state.nextTableId = Math.max.apply(null, tables.map(function (t) { return t.id; })) + 1;
         state.nextGroupId = groups.length
             ? Math.max.apply(null, groups.map(function (g) { return g.id; })) + 1
@@ -3698,6 +3789,7 @@
                     return {
                         id: table.id,
                         seats: table.seats,
+                        number: table.number,
                         roomId: table.roomId
                     };
                 })
@@ -3733,7 +3825,12 @@
             if (!Number.isInteger(id) || id < 1 || tableIds.has(id)) return null;
             if (!Number.isInteger(seats) || seats < 1 || seats > MAX_SEATS) return null;
             tableIds.add(id);
-            tables.push({ id: id, seats: seats, roomId: null });
+            tables.push({
+                id: id,
+                seats: seats,
+                number: Number(rawTable && rawTable.number),
+                roomId: null
+            });
         }
 
         const rooms = [];
@@ -4033,7 +4130,7 @@
         roomsActions.appendChild(el(
             'p',
             'settings-rooms-hint',
-            'Aggiungi una sala vuota e riempila con i tavoli. La numerazione è progressiva su tutte le sale.'
+            'Aggiungi una sala vuota e riempila con i tavoli. La numerazione è progressiva su tutte le sale e il numero di ogni tavolo resta fisso anche dopo lo spostamento.'
         ));
         const addRoomBtn = el('button', 'btn btn-add-room', '+ Sala');
         addRoomBtn.type = 'button';

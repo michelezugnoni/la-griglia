@@ -676,6 +676,12 @@ h1, h2 {
     opacity: .78;
 }
 
+/* L'orario è mostrato solo nella stampa della pianta: a schermo il
+   tavolo prenotato resta compatto. */
+.entity-time {
+    display: none;
+}
+
 .entity-name {
     position: relative;
     z-index: 1;
@@ -2675,6 +2681,16 @@ body.settings-open {
         print-color-adjust: exact;
     }
 
+    /* Le animazioni di ingresso (opacity 0 → 1) non devono essere
+       campionate all'istante zero durante la stampa: la stampa le
+       disattiva e forza gli elementi a restare visibili. */
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+
     .topbar,
     .summary,
     .tabbar,
@@ -2692,8 +2708,8 @@ body.settings-open {
 
     .print-header {
         display: block;
-        margin-bottom: 5mm;
-        padding-bottom: 2.5mm;
+        margin-bottom: 3mm;
+        padding-bottom: 1.6mm;
         border-bottom: 1.4pt solid #241f1a;
     }
 
@@ -2745,6 +2761,8 @@ body.settings-open {
     body.print-plan #panelSala,
     body.print-reservations #panelPrenotazioni {
         display: block !important;
+        opacity: 1 !important;
+        transform: none !important;
     }
 
     body.print-plan .side {
@@ -2769,7 +2787,7 @@ body.settings-open {
     body.print-plan .legend {
         display: flex;
         gap: 4mm;
-        margin: 0 0 3mm;
+        margin: 0 0 2mm;
         font-size: 8pt;
         color: #241f1a;
     }
@@ -2782,6 +2800,7 @@ body.settings-open {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: 5mm !important;
+        align-items: start;
         margin: 0;
     }
 
@@ -2791,10 +2810,11 @@ body.settings-open {
         border: 0 !important;
         box-shadow: none !important;
         break-inside: avoid;
+        page-break-inside: avoid;
     }
 
     body.print-plan .room-head {
-        padding: 0 0 2mm !important;
+        padding: 0 0 1.4mm !important;
     }
 
     body.print-plan .room-name {
@@ -2813,9 +2833,9 @@ body.settings-open {
     }
 
     body.print-plan .room-grid {
-        grid-template-rows: repeat(var(--rows, 9), minmax(13mm, auto)) !important;
-        gap: 1.4mm !important;
-        padding: 2mm !important;
+        grid-template-rows: repeat(var(--rows, 9), 15.5mm) !important;
+        gap: 1.2mm !important;
+        padding: 1.6mm !important;
         background: #f7f3ec !important;
         border: 1px solid #c9bdae !important;
         border-radius: 2mm !important;
@@ -2829,8 +2849,9 @@ body.settings-open {
     }
 
     body.print-plan .entity {
-        gap: .4mm;
-        padding: 1.6mm 1mm !important;
+        gap: .3mm;
+        padding: 1.4mm 1mm !important;
+        overflow: visible !important;
         color: #241f1a !important;
         background: #fff !important;
         border: 1px solid #b9ac9c !important;
@@ -2858,6 +2879,13 @@ body.settings-open {
         border-color: #6d28d9 !important;
     }
 
+    /* Un gruppo prenotato è occupato come un tavolo singolo: in stampa
+       deve risultare rosso, non viola. */
+    body.print-plan .entity.entity-group.is-booked {
+        background: #fdeae7 !important;
+        border-color: #b83c32 !important;
+    }
+
     body.print-plan .entity.is-selected,
     body.print-plan .entity.is-picked {
         outline: 0 !important;
@@ -2865,11 +2893,21 @@ body.settings-open {
 
     body.print-plan .entity-tag {
         display: block !important;
-        font-size: 5.5pt;
+        font-size: 5.8pt;
         font-weight: 700;
-        letter-spacing: .06em;
+        letter-spacing: .05em;
         text-transform: uppercase;
         color: #6b6053;
+    }
+
+    body.print-plan .entity-time {
+        display: inline !important;
+        font-size: 7.2pt;
+        font-weight: 850;
+        letter-spacing: 0;
+        text-transform: none;
+        color: #8d241d;
+        opacity: 1;
     }
 
     body.print-plan .entity-group .entity-tag {
@@ -2877,18 +2915,18 @@ body.settings-open {
     }
 
     body.print-plan .entity-name {
-        font-size: 12pt;
+        font-size: 11pt;
         font-weight: 800;
         line-height: 1.05;
         color: #241f1a;
     }
 
     body.print-plan .entity-group .entity-name {
-        font-size: 10.5pt;
+        font-size: 9.5pt;
     }
 
     body.print-plan .entity-seats {
-        font-size: 7pt;
+        font-size: 6.6pt;
         color: #4d463d;
     }
 
@@ -2909,8 +2947,8 @@ body.settings-open {
     body.print-plan .entity-note {
         display: block;
         max-width: 100%;
-        font-size: 6.8pt;
-        line-height: 1.15;
+        font-size: 6.6pt;
+        line-height: 1.12;
         color: #241f1a;
         white-space: normal;
         overflow: visible;
@@ -2919,7 +2957,8 @@ body.settings-open {
     }
 
     body.print-plan .is-booked .entity-note {
-        font-weight: 750;
+        font-size: 7.4pt;
+        font-weight: 800;
         color: #8d241d;
     }
 
