@@ -1368,7 +1368,8 @@
         els.freeSeats.textContent = String(free);
 
         const groupLabel = state.groups.length === 1 ? '1 gruppo' : state.groups.length + ' gruppi';
-        els.totalFoot.textContent = state.tables.length + ' tavoli · ' + groupLabel;
+        els.totalFoot.textContent = state.tables.length +
+            (state.tables.length === 1 ? ' tavolo · ' : ' tavoli · ') + groupLabel;
         els.bookedFoot.textContent = activeCount > 0
             ? activeCount + (activeCount === 1 ? ' prenotazione attiva' : ' prenotazioni attive')
             : 'Nessuna prenotazione in questo slot';
@@ -1577,7 +1578,11 @@
         const list = el('div', 'target-list');
         targets.forEach(function (target) {
             const row = el('div', 'target-item');
-            row.appendChild(el('span', 'target-item-name', shortName(target)));
+            row.appendChild(el(
+                'span',
+                'target-item-name',
+                target.kind === 'table' ? tableLabel(target.id) : shortName(target)
+            ));
             row.appendChild(el('span', 'target-item-room', entityRoomName(target.kind, target.id)));
             row.appendChild(el('span', 'target-item-seats', entitySeats(target) + ' posti'));
 
@@ -2080,80 +2085,6 @@
         let id = 1;
         while (used.has(id)) id++;
         return id;
-    }
-
-    function orderedTableItems() {
-        const items = [];
-        state.rooms.forEach(function (room) {
-            room.layout
-                .filter(function (item) { return item.kind === 'table'; })
-                .slice()
-                .sort(function (a, b) {
-                    if (a.row !== b.row) return a.row - b.row;
-                    return a.col - b.col;
-                })
-                .forEach(function (item) { items.push(item); });
-        });
-        return items;
-    }
-
-    function renumberTables() {
-        if (state.groups.length) {
-            toast('Dividi i tavoli uniti prima di rinumerare.', 'warning');
-            return false;
-        }
-
-        const items = orderedTableItems();
-        if (!items.length) return false;
-
-        const map = new Map();
-        items.forEach(function (item, index) {
-            map.set(item.id, index + 1);
-        });
-
-        let changed = false;
-        items.forEach(function (item) {
-            const next = map.get(item.id);
-            if (next !== item.id) changed = true;
-            item.id = next;
-        });
-
-        state.tables.forEach(function (table) {
-            const next = map.get(table.id);
-            if (next) table.id = next;
-        });
-
-        state.reservations.forEach(function (reservation) {
-            reservationTargets(reservation).forEach(function (target) {
-                if (target.kind !== 'table') return;
-                const next = map.get(target.id);
-                if (next) target.id = next;
-            });
-        });
-
-        selection = selection.map(function (entity) {
-            if (entity.kind !== 'table') return entity;
-            return { kind: entity.kind, id: map.get(entity.id) || entity.id };
-        });
-
-        if (movePicked && movePicked.kind === 'table') {
-            movePicked = { kind: movePicked.kind, id: map.get(movePicked.id) || movePicked.id };
-        }
-
-        state.nextTableId = state.tables.reduce(function (max, table) {
-            return Math.max(max, table.id);
-        }, 0) + 1;
-
-        saveState();
-        saveConfig();
-        renderAll();
-        toast(
-            changed
-                ? 'Tavoli rinumerati in ogni sala secondo la posizione.'
-                : 'La numerazione per sala è già aggiornata.',
-            changed ? 'success' : 'info'
-        );
-        return true;
     }
 
     function addTableToRoom(roomId) {
@@ -4096,7 +4027,8 @@
             head.appendChild(el(
                 'span',
                 'settings-room-meta',
-                tables.length + ' tavoli · ' + seats + ' posti'
+                tables.length + (tables.length === 1 ? ' tavolo · ' : ' tavoli · ') +
+                seats + (seats === 1 ? ' posto' : ' posti')
             ));
             card.appendChild(head);
 

@@ -23,6 +23,7 @@
     --move: #7c3aed;
 
     --radius: 14px;
+    --page-pad: 22px;
     --shadow-sm: 0 1px 2px rgba(36, 31, 26, .05), 0 8px 22px rgba(36, 31, 26, .05);
     --shadow-md: 0 12px 32px rgba(36, 31, 26, .14);
 }
@@ -390,6 +391,28 @@ h1, h2 {
 
 .panel-head.tight {
     align-items: center;
+}
+
+.floor-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "title toolbar gear";
+    align-items: center;
+    gap: 12px;
+}
+
+.floor-head h2 {
+    grid-area: title;
+}
+
+.floor-head .toolbar {
+    grid-area: toolbar;
+    justify-content: flex-end;
+}
+
+.floor-head .btn-settings {
+    grid-area: gear;
+    align-self: center;
 }
 
 .toolbar {
@@ -781,6 +804,86 @@ h1, h2 {
 
 .target.is-busy .target-note {
     color: var(--booked-2);
+}
+
+.target.is-short {
+    border-left-color: var(--group);
+}
+
+.target-list {
+    display: grid;
+    gap: 4px;
+    margin-top: 7px;
+}
+
+.target-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto 26px;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 6px 5px 9px;
+    font-size: 12px;
+    background: #fffefb;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.target-item-name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.target-item-room {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 11px;
+    color: var(--muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.target-item-seats {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.target-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.target-remove:hover {
+    color: var(--booked-2);
+    border-color: #e9b8b3;
+}
+
+.target-warning {
+    margin-top: 7px;
+    padding: 6px 8px;
+    font-size: 11.5px;
+    font-weight: 650;
+    line-height: 1.35;
+    color: #8a4b00;
+    background: #fdf1de;
+    border: 1px solid #f2cf9b;
+    border-radius: 8px;
 }
 
 /* ---------- Seat editor ---------- */
@@ -1189,6 +1292,28 @@ form {
     gap: 7px;
 }
 
+.btn-select-table {
+    width: 100%;
+    margin-top: 2px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1d4ed8;
+    background: #eef3ff;
+    border: 1px solid #c7d7fb;
+}
+
+.btn-select-table:hover {
+    background: #e3ecff;
+    border-color: #a9c2f7;
+}
+
+.btn-select-table.is-short {
+    color: #8a4b00;
+    background: #fdf1de;
+    border-color: #f2cf9b;
+}
+
 .form-actions .btn-block {
     margin-top: 0;
 }
@@ -1214,8 +1339,70 @@ form {
 
 .reservation-list {
     display: grid;
-    gap: 8px;
+    gap: 14px;
     margin-top: 11px;
+}
+
+.reservation-group {
+    display: grid;
+    gap: 7px;
+}
+
+.reservation-group-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--line);
+}
+
+.reservation-group-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--accent-strong);
+}
+
+.reservation-group-range {
+    font-size: 11px;
+    font-weight: 650;
+    color: var(--muted);
+}
+
+.reservation-group-meta {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 650;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.group-cena .reservation-group-title { color: #5b3fa8; }
+.group-extra .reservation-group-title { color: var(--muted); }
+
+.reservation-group-list {
+    display: grid;
+    gap: 8px;
+}
+
+.reservation-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+}
+
+.reservation-time {
+    flex: none;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-strong);
+    background: var(--accent-soft);
+    border-radius: 6px;
 }
 
 .reservation {
@@ -1401,6 +1588,7 @@ form {
 
 @media (max-width: 900px) {
     body {
+        --page-pad: 12px;
         padding: 12px;
     }
 
@@ -1414,18 +1602,35 @@ form {
         display: contents;
     }
 
-    #settingsBtn {
-        order: 0;
-        align-self: flex-end;
-        width: 38px;
-        height: 38px;
-        min-height: 38px;
-        margin-bottom: 8px;
-        padding: 0;
-    }
-
     .summary {
         order: 1;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .stat {
+        gap: 0;
+        padding: 8px 10px 7px;
+        border-radius: 11px;
+    }
+
+    .stat::before {
+        width: 3px;
+    }
+
+    .stat-label {
+        font-size: 9.5px;
+        letter-spacing: .05em;
+        line-height: 1.15;
+    }
+
+    .stat-value {
+        font-size: 23px;
+        line-height: 1.05;
+    }
+
+    .stat-foot {
+        display: none;
     }
 
     .workspace {
@@ -1489,19 +1694,28 @@ form {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 2px;
-        min-height: 52px;
-        padding: 6px 4px;
+        gap: 3px;
+        min-height: 54px;
+        padding: 5px 3px;
         font: inherit;
-        font-size: 11px;
+        font-size: 10.5px;
         font-weight: 700;
-        letter-spacing: .02em;
+        line-height: 1.15;
+        letter-spacing: .01em;
+        text-align: center;
         color: var(--muted);
         background: transparent;
         border: 1px solid transparent;
         border-radius: 10px;
         cursor: pointer;
         -webkit-tap-highlight-color: transparent;
+    }
+
+    .tab-text {
+        display: block;
+        max-width: 100%;
+        font-size: 10px;
+        text-wrap: balance;
     }
 
     .tab svg {
@@ -1649,10 +1863,32 @@ form {
         gap: 10px;
     }
 
+    .floor-head {
+        grid-template-columns: minmax(0, 1fr) 34px;
+        grid-template-areas:
+            "title gear"
+            "toolbar toolbar";
+        gap: 8px;
+    }
+
+    .floor-head h2 {
+        align-self: center;
+        font-size: 17px;
+        line-height: 1.1;
+    }
+
+    .floor-head .btn-settings {
+        align-self: start;
+        width: 34px;
+        height: 34px;
+        min-height: 34px;
+    }
+
     .floor-panel .toolbar {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         width: 100%;
+        justify-content: stretch;
     }
 
     #moveBtn {
@@ -1680,15 +1916,15 @@ form {
 
 @media (max-width: 720px) {
     .summary {
-        gap: 10px;
+        gap: 7px;
     }
 
     .stat {
-        padding: 13px 14px 12px;
+        padding: 8px 9px 7px;
     }
 
     .stat-value {
-        font-size: 27px;
+        font-size: 22px;
     }
 
     .room {
@@ -1718,15 +1954,20 @@ form {
 @media (max-width: 560px) {
     .summary {
         grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .stat {
+        padding: 7px 8px 6px;
     }
 
     .stat-label {
-        font-size: 9.5px;
-        letter-spacing: .05em;
+        font-size: 9px;
+        letter-spacing: .04em;
     }
 
     .stat-value {
-        font-size: 24px;
+        font-size: 21px;
     }
 
     .stat-foot {
@@ -1770,6 +2011,10 @@ form {
 @media (max-width: 420px) {
     .tab {
         font-size: 10.5px;
+    }
+
+    .tab-text {
+        font-size: 9.5px;
     }
 
     .room-grid {
@@ -1820,10 +2065,10 @@ body {
 
 @supports (padding: max(0px)) {
     body {
-        padding-top: max(22px, env(safe-area-inset-top));
-        padding-right: max(22px, env(safe-area-inset-right));
-        padding-bottom: max(22px, env(safe-area-inset-bottom));
-        padding-left: max(22px, env(safe-area-inset-left));
+        padding-top: max(var(--page-pad, 22px), env(safe-area-inset-top));
+        padding-right: max(var(--page-pad, 22px), env(safe-area-inset-right));
+        padding-bottom: max(var(--page-pad, 22px), env(safe-area-inset-bottom));
+        padding-left: max(var(--page-pad, 22px), env(safe-area-inset-left));
     }
 }
 
@@ -2169,9 +2414,7 @@ body.settings-open {
     gap: 8px;
     padding: 7px 12px;
     border-bottom: 1px solid var(--line);
-}
-
-.settings-table:last-child {
+}.settings-table:last-child {
     border-bottom: 0;
 }
 
@@ -2240,6 +2483,104 @@ body.settings-open {
 
 .settings-add {
     margin: 10px 12px;
+}
+
+.settings-table-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.settings-move {
+    padding: 5px 7px;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #1d4ed8;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.settings-move:hover:not(:disabled) {
+    background: #eaf0ff;
+    border-color: #c7d7fb;
+}
+
+.settings-move:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+}
+
+.settings-room-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 12px;
+}
+
+.settings-room-actions .settings-add {
+    flex: 1;
+    margin: 0;
+}
+
+.settings-remove-room {
+    padding: 6px 9px;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #a72b24;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.settings-remove-room:hover:not(:disabled) {
+    background: #fde8e6;
+    border-color: #f0b3ad;
+}
+
+.settings-remove-room:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
+
+.settings-remove-room.is-danger {
+    color: #fffaf5;
+    background: #b8322a;
+    border-color: #b8322a;
+}
+
+.settings-room-empty {
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.settings-rooms-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 12px;
+    background: var(--surface-2);
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+}
+
+.settings-rooms-hint {
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: var(--muted);
+}
+
+.btn-add-room {
+    flex: none;
+    font-size: 12.5px;
+    white-space: nowrap;
 }
 
 .settings-foot {
@@ -2561,8 +2902,58 @@ body.settings-open {
 
     body.print-reservations .reservation-list {
         display: grid;
-        gap: 2.6mm;
+        gap: 4mm;
         margin: 0;
+    }
+
+    body.print-reservations .reservation-group {
+        display: grid;
+        gap: 2.4mm;
+    }
+
+    body.print-reservations .reservation-group-head {
+        display: flex;
+        align-items: baseline;
+        gap: 3mm;
+        padding-bottom: 1.4mm;
+        border-bottom: 1.2pt solid #241f1a;
+        break-after: avoid;
+    }
+
+    body.print-reservations .reservation-group-title {
+        font-size: 11pt;
+        font-weight: 800;
+        letter-spacing: .06em;
+        color: #241f1a;
+    }
+
+    body.print-reservations .reservation-group-range {
+        font-size: 9pt;
+        color: #5a5248;
+    }
+
+    body.print-reservations .reservation-group-meta {
+        margin-left: auto;
+        font-size: 9pt;
+        color: #3f382f;
+    }
+
+    body.print-reservations .reservation-group-list {
+        gap: 2.2mm;
+    }
+
+    body.print-reservations .reservation-title-row {
+        gap: 2.5mm;
+        margin-bottom: .8mm;
+    }
+
+    body.print-reservations .reservation-time {
+        padding: 0 1.6mm;
+        font-size: 8.5pt;
+        color: #241f1a;
+        background: #f1e7dc !important;
+        border: 1px solid #c9bdae;
+        border-radius: 1mm;
     }
 
     body.print-reservations .reservation {
