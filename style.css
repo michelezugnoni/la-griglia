@@ -3205,6 +3205,24 @@ body.settings-open {
     backdrop-filter: blur(4px);
 }
 
+/* Su mobile il badge si sposta in basso al centro */
+@media (max-width: 900px) {
+    .cloud-badge {
+        position: fixed;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-left: 0;
+        z-index: 95;
+    }
+
+    .brand-logo {
+        width: 56px;
+        height: 56px;
+        padding: 8px;
+    }
+}
+
 /* ---------- Badge sincronizzazione cloud (posizionato in basso) ---------- */
 .cloud-badge-bottom {
     position: fixed;

@@ -375,16 +375,14 @@
         if (!loadState()) {
             buildFreshState();
         }
+        setDefaultSlot();
 
         // Su mobile: apri direttamente su "Nuove prenotazioni" con servizio pranzo
         if (isMobileLayout()) {
             activeTab = 'nuova';
-            if (serviceBandForTime(els.time.value) !== 'pranzo') {
-                setTimeValue(els.time, '12:30');
-                onHeaderSlotChange();
-            }
+            setTimeValue(els.time, '12:30');
+            onHeaderSlotChange();
         }
-        setDefaultSlot();
         bindEvents();
         bindTabs();
         bindPrint();

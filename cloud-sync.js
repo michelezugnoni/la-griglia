@@ -177,8 +177,7 @@
             badge = document.createElement('span');
             badge.id = 'cloud-sync-badge';
             badge.className = 'cloud-badge';
-            const actions = document.querySelector('.topbar-actions');
-            if (actions) actions.appendChild(badge);
+            document.body.appendChild(badge);
         }
 
         const styles = {
