@@ -176,9 +176,10 @@
         if (!badge) {
             badge = document.createElement('span');
             badge.id = 'cloud-sync-badge';
-            badge.className = 'cloud-badge';
-            const actions = document.querySelector('.topbar-actions');
-            if (actions) actions.appendChild(badge);
+            badge.className = 'cloud-badge cloud-badge-bottom';
+            document.body.appendChild(badge);
+        } else {
+            badge.classList.add('cloud-badge-bottom');
         }
 
         const styles = {
