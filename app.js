@@ -375,6 +375,15 @@
         if (!loadState()) {
             buildFreshState();
         }
+
+        // Su mobile: apri direttamente su "Nuove prenotazioni" con servizio pranzo
+        if (isMobileLayout()) {
+            activeTab = 'nuova';
+            if (serviceBandForTime(els.time.value) !== 'pranzo') {
+                setTimeValue(els.time, '12:30');
+                onHeaderSlotChange();
+            }
+        }
         setDefaultSlot();
         bindEvents();
         bindTabs();
@@ -457,7 +466,7 @@
 
     function setDefaultSlot() {
         if (!els.date.value) els.date.value = todayIso();
-        if (!els.time.value) els.time.value = '20:00';
+        if (!els.time.value) els.time.value = '12:30';
     }
 
     function defaultSetup() {
@@ -3433,7 +3442,7 @@
             fragment.appendChild(option);
         });
         select.replaceChildren(fragment);
-        select.value = '20:00';
+        select.value = '12:30';
     }
 
     function setTimeValue(select, value) {

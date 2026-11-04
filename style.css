@@ -97,16 +97,17 @@ h1, h2 {
     margin-right: auto;
 }
 
-.brand-plate {
-    display: grid;
-    place-items: center;
+.brand-logo {
     width: 46px;
     height: 46px;
-    border-radius: 50%;
-    background: linear-gradient(150deg, #c9552b, #a53c18);
-    color: #fffaf4;
-    box-shadow: 0 6px 14px rgba(184, 69, 31, .28);
+    object-fit: contain;
+    display: block;
     flex: none;
+    margin-right: 12px;
+    padding: 6px;
+    background: #241f1a; /* sfondo scuro dietro il logo */
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 .brand h1 {
