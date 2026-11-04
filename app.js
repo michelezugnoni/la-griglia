@@ -365,6 +365,13 @@
         cacheElements();
         buildTimeOptions(els.time);
         buildTimeOptions(els.formTime);
+
+        // Aggancio sincronizzazione cloud (PocketBase)
+        if (window.cloudSync) {
+            window.cloudSync.ready(els);
+            window.cloudSync.init();
+        }
+
         if (!loadState()) {
             buildFreshState();
         }
@@ -3604,6 +3611,19 @@
         } catch (error) {
             /* Storage non disponibile: l'app resta utilizzabile in memoria. */
         }
+
+        // Push al cloud (PocketBase) se disponibile
+        if (window.cloudSync && typeof window.cloudSync.push === 'function') {
+            window.cloudSync.push({
+                rooms: state.rooms,
+                tables: state.tables,
+                groups: state.groups,
+                reservations: state.reservations,
+                nextTableId: state.nextTableId,
+                nextGroupId: state.nextGroupId,
+                nextReservationId: state.nextReservationId
+            });
+        }
     }
 
     function loadState() {
@@ -4778,4 +4798,26 @@
             }
         });
     }
+
+    /* ---------- Esposizione per cloud-sync.js ---------- */
+    window.__lg = {
+        renderAll: renderAll,
+        toast: toast,
+        state: state,
+        ensureTableNumbers: ensureTableNumbers,
+        saveState: saveState
+    };
+
+    window.applyStateFromCloud = function (payload) {
+        state.rooms = payload.rooms || [];
+        state.tables = payload.tables || [];
+        state.groups = payload.groups || [];
+        state.reservations = payload.reservations || [];
+        state.nextTableId = payload.nextTableId || 1;
+        state.nextGroupId = payload.nextGroupId || 1;
+        state.nextReservationId = payload.nextReservationId || 1;
+        ensureTableNumbers();
+        saveState();
+        renderAll();
+    };
 })();

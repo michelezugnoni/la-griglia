@@ -14,24 +14,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="La Griglia">
 	
-	<!-- FIREBASE SDK VIA CDN (aggiungi QUI, prima di <script src="app.js"></script>) -->
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
-<!-- TUA CONFIGURAZIONE FIREBASE (sostituisci con le tue credenziali) -->
-<script>
-  const firebaseConfig = {
-  apiKey: "AIzaSyAjb5uKktsgqhcTWRGEXLUKXzl26CeIStk",
-  authDomain: "la-griglia-4313e.firebaseapp.com",
-  projectId: "la-griglia-4313e",
-  storageBucket: "la-griglia-4313e.firebasestorage.app",
-  messagingSenderId: "936648697522",
-  appId: "1:936648697522:web:439f107f480bdd7325cbab",
-  };
-</script>
-
-<!-- Script app.js viene caricato in fondo al <body>, dopo i DOM e Firebase -->
-
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -332,5 +314,6 @@
     </noscript>
 
     <script src="app.js"></script>
+    <script src="cloud-sync.js"></script>
 </body>
 </html>
