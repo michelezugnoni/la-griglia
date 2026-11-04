@@ -1,19 +1,19 @@
 /* ============================================================
    La Griglia — Sincronizzazione cloud con PocketBase
    Modulo standalone: non modifica l'architettura di app.js.
-   Si collega a PocketBase in locale (http://127.0.0.1:8090).
+   Si collega a PocketBase Cloud.
    ============================================================ */
 
 (function () {
     'use strict';
 
     // ---------- Configurazione ----------
-    const PB_URL = 'http://127.0.0.1:8090';
+    const PB_URL = 'https://ske2d9jdern256g.pwz5.pocketbasecloud.com';
     const COLLECTION_CONFIG = 'config';
     const COLLECTION_USERS = 'users';
     const USER_EMAIL = 'michelezugnoni1989@gmail.com';
     const USER_PASSWORD = 'Roccolilorla89!';
-    const PULL_INTERVAL = 10000; // 10 secondi (più reattivo per i test)
+    const PULL_INTERVAL = 10000; // 10 secondi
 
     // ---------- Stato modulo ----------
     let authToken = null;
@@ -33,10 +33,12 @@
             'Content-Type': 'application/json'
         }, authToken ? { 'Authorization': 'Bearer ' + authToken } : {});
 
+        log('HTTP ' + (options && options.method ? options.method : 'GET') + ' ' + path);
+
         const response = await fetch(url, Object.assign({}, options, { headers: headers }));
         if (!response.ok) {
             const text = await response.text().catch(() => '');
-            throw new Error('HTTP ' + response.status + (text ? ': ' + text.slice(0, 200) : ''));
+            throw new Error('HTTP ' + response.status + (text ? ': ' + text.slice(0, 300) : ''));
         }
         return await response.json();
     }
@@ -70,9 +72,10 @@
             if (data.items && data.items.length > 0) {
                 return data.items[0].id;
             }
+            log('Nessun record trovato in config');
             return null;
         } catch (err) {
-            log('Nessun record trovato in config (prima sincronizzazione?)');
+            console.error('❌ Errore ricerca record config:', err);
             return null;
         }
     }
@@ -80,11 +83,13 @@
     // ---------- Push: invia stato completo a cloud ----------
     async function pushState(stateData) {
         if (!syncReady) {
+            log('Push saltato: non pronto');
             return { ok: false, reason: 'not-ready' };
         }
 
         const signature = JSON.stringify(stateData);
         if (lastPushData === signature) {
+            log('Push saltato: identico all\'ultimo (anti echo)');
             return { ok: true, reason: 'echo-skip' };
         }
 
@@ -99,6 +104,8 @@
                 nextReservationId: stateData.nextReservationId,
                 updatedAt: new Date().toISOString()
             };
+
+            log('Invio payload al cloud, prenotazioni: ' + (stateData.reservations ? stateData.reservations.length : 0));
 
             const recordId = await findConfigRecordId();
 
@@ -154,7 +161,6 @@
     function applyCloudState(payload) {
         if (!payload) return false;
 
-        // Passa i dati a app.js (esposta come window.applyStateFromCloud)
         if (typeof window.applyStateFromCloud === 'function') {
             window.applyStateFromCloud(payload);
             log('Stato applicato all\'app locale');
@@ -230,8 +236,12 @@
                     setStatusBadge('synced');
                     log('Sincronizzazione iniziale completata');
                 } else {
-                    setStatusBadge('online');
-                    log('Nessun dato cloud ancora, attendo prima modifica');
+                    log('Nessun dato cloud ancora: spingo stato attuale per creare il primo record');
+                    // Spinge lo stato attuale per creare il primo record su cloud
+                    if (typeof window.__lg !== 'undefined' && typeof window.__lg.state !== 'undefined') {
+                        await pushState(window.__lg.state);
+                        setStatusBadge('online');
+                    }
                 }
                 startPullTimer();
             } else {
