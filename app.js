@@ -35,6 +35,7 @@
     let settingsConfirmTimer = null;
     let installPrompt = null;
     let activeTab = 'sala';
+    let selectionFromForm = false;
     let touchStart = null;
     let lastFocusBeforePrint = null;
     let lastFocusBeforeSettings = null;
@@ -125,6 +126,8 @@
                 panel.classList.toggle('is-active', active);
             }
         });
+
+        renderSelectionUI();
 
         if (isMobileLayout() && (!options || options.scroll !== false)) {
             window.scrollTo({ top: 0, behavior: 'auto' });
@@ -439,6 +442,10 @@
         els.listSubtitle = document.getElementById('listSubtitle');
         els.reservationList = document.getElementById('reservationList');
         els.toastStack = document.getElementById('toastStack');
+        els.serviceToggle = document.getElementById('serviceToggle');
+        els.planConfirmBar = document.getElementById('planConfirmBar');
+        els.planConfirmText = document.getElementById('planConfirmText');
+        els.confirmTablesBtn = document.getElementById('confirmTablesBtn');
     }
 
     function setDefaultSlot() {
@@ -997,6 +1004,15 @@
         }) || null;
     }
 
+    // Un gruppo prenotato va mostrato unito solo nel giorno e nel servizio
+    // della sua prenotazione: negli altri slot i tavoli tornano singoli.
+    // Un'unione manuale (senza prenotazioni) resta unita sempre.
+    function groupMergedHere(group) {
+        if (!group) return false;
+        if (activeReservation('group', group.id)) return true;
+        return groupReservations(group.id).length === 0;
+    }
+
     function reservationAtSlot(kind, id, date, time, excludeId) {
         return state.reservations.find(function (reservation) {
             if (excludeId !== undefined && excludeId !== null && reservation.id === excludeId) {
@@ -1191,6 +1207,28 @@
             if (item.kind === 'group') {
                 const group = getGroup(item.id);
                 if (!group) return;
+
+                // Unione legata a una prenotazione: fuori da quel servizio i
+                // tavoli tornano singoli, così non restano "incollati" in
+                // giorni diversi da quello prenotato.
+                if (!groupMergedHere(group)) {
+                    group.memberIds.forEach(function (tableId) {
+                        const table = getTable(tableId);
+                        if (!table) return;
+                        const offset = (group.offsets || []).find(function (entry) {
+                            return entry.id === tableId;
+                        }) || { dCol: 0, dRow: 0, colSpan: 1, rowSpan: 1 };
+
+                        grid.appendChild(renderTableEntity(table, room, {
+                            col: item.col + offset.dCol,
+                            row: item.row + offset.dRow,
+                            colSpan: offset.colSpan,
+                            rowSpan: offset.rowSpan
+                        }));
+                    });
+                    return;
+                }
+
                 grid.appendChild(renderGroupEntity(group, room, item));
             }
         });
@@ -1377,6 +1415,7 @@
         renderSummary();
         renderReservations();
         syncFormMode();
+        renderServiceToggle();
 
         const slot = currentSlot();
         els.slotLabel.textContent = 'Servizio ' + serviceBandLabel(slot.time) + ' · ' +
@@ -1468,6 +1507,42 @@
         if (els.tabSelectionDot) {
             els.tabSelectionDot.hidden = selection.length === 0;
         }
+
+        if (els.planConfirmBar) {
+            const planOnScreen = !isMobileLayout() ||
+                (els.panels.sala && els.panels.sala.classList.contains('is-active'));
+            const showConfirm = selectionFromForm && selection.length > 0 && planOnScreen;
+            els.planConfirmBar.hidden = !showConfirm;
+            document.body.classList.toggle('has-plan-confirm', showConfirm);
+            if (showConfirm && els.planConfirmText) {
+                els.planConfirmText.textContent = targetsLabel(selection) + ' · ' +
+                    selectionSeats() + ' posti';
+            }
+        }
+    }
+
+    function renderServiceToggle() {
+        if (!els.serviceToggle) return;
+        const band = serviceBandForTime(els.time.value);
+        els.serviceToggle.querySelectorAll('.service-btn').forEach(function (button) {
+            const active = button.dataset.service === band;
+            button.setAttribute('aria-pressed', String(active));
+            button.classList.toggle('is-active', active);
+        });
+    }
+
+    function onServicePick(band) {
+        if (band !== 'pranzo' && band !== 'cena') return;
+        if (serviceBandForTime(els.time.value) === band) return;
+
+        setTimeValue(els.time, band === 'pranzo' ? '12:30' : '20:00');
+        onHeaderSlotChange();
+        toast(
+            band === 'pranzo'
+                ? 'Servizio pranzo: tavoli e prenotazioni fino alle 16:00.'
+                : 'Servizio cena: tavoli e prenotazioni dalle 16:00 alle 22:00.',
+            'info'
+        );
     }
 
     function renderSummary() {
@@ -2347,8 +2422,25 @@
         }
 
         if (tables.some(function (t) { return t.groupId !== null; })) {
+            const dormant = tables.map(function (t) {
+                return t.groupId !== null ? getGroup(t.groupId) : null;
+            }).find(function (group) {
+                return !!group && !groupMergedHere(group);
+            });
+
             nudge(els.combineBtn);
-            toast('Alcuni tavoli fanno già parte di un gruppo: separa prima quel gruppo.', 'warning');
+
+            if (dormant) {
+                const reservation = groupReservations(dormant.id)[0];
+                toast(
+                    'Questi tavoli sono uniti per la prenotazione di ' + reservation.name +
+                    ' il ' + formatDate(reservation.date) + ' alle ' + reservation.time +
+                    ': apri quel giorno e servizio per gestire il gruppo.',
+                    'warning'
+                );
+            } else {
+                toast('Alcuni tavoli fanno già parte di un gruppo: separa prima quel gruppo.', 'warning');
+            }
             return;
         }
 
@@ -2430,35 +2522,14 @@
         );
     }
 
-    function onSeparate() {
-        if (selection.length !== 1 || selection[0].kind !== 'group') {
-            nudge(els.separateBtn);
-            toast('Seleziona un gruppo nella pianta per dividerlo nei tavoli singoli.', 'info');
-            return;
-        }
-
-        const group = getGroup(selection[0].id);
-        if (!group) return;
+    // Riporta nella sala i tavoli di un gruppo come entità singole.
+    function dissolveGroup(group) {
+        if (!group) return false;
 
         const location = entityLocation('group', group.id);
-        if (!location) return;
+        if (!location) return false;
         const room = location.room;
         const groupItem = location.item;
-
-        // Il gruppo è un'entità unica in tutti gli slot: per separarlo
-        // non deve avere prenotazioni in nessun orario.
-        const groupReservation = state.reservations.find(function (r) {
-            return reservationHasTarget(r, 'group', group.id);
-        });
-        if (groupReservation) {
-            nudge(els.separateBtn);
-            toast(
-                'Il gruppo ha una prenotazione il ' + formatDate(groupReservation.date) +
-                ' alle ' + groupReservation.time + ': annullala per dividerlo.',
-                'warning'
-            );
-            return;
-        }
 
         room.layout = room.layout.filter(function (item) {
             return !(item.kind === 'group' && item.id === group.id);
@@ -2502,13 +2573,64 @@
             }
         });
 
-        const totalSeats = groupSeats(group);
         state.groups = state.groups.filter(function (g) { return g.id !== group.id; });
+        selection = selection.filter(function (entity) {
+            return !(entity.kind === 'group' && entity.id === group.id);
+        });
+        return true;
+    }
+
+    // Se una prenotazione che teneva uniti dei tavoli viene annullata o
+    // modificata, il gruppo senza più prenotazioni torna a tavoli singoli.
+    function pruneOrphanGroups(targets) {
+        const groupIds = [];
+        (targets || []).forEach(function (target) {
+            if (target.kind !== 'group') return;
+            if (groupIds.indexOf(target.id) === -1) groupIds.push(target.id);
+        });
+
+        groupIds.forEach(function (groupId) {
+            const group = getGroup(groupId);
+            if (!group) return;
+            if (groupReservations(groupId).length) return;
+            dissolveGroup(group);
+        });
+    }
+
+    function onSeparate() {
+        if (selection.length !== 1 || selection[0].kind !== 'group') {
+            nudge(els.separateBtn);
+            toast('Seleziona un gruppo nella pianta per dividerlo nei tavoli singoli.', 'info');
+            return;
+        }
+
+        const group = getGroup(selection[0].id);
+        if (!group) return;
+
+        // Il gruppo è un'entità unica in tutti gli slot: per separarlo
+        // non deve avere prenotazioni in nessun orario.
+        const groupReservation = groupReservations(group.id)[0];
+        if (groupReservation) {
+            nudge(els.separateBtn);
+            toast(
+                'Il gruppo ha una prenotazione il ' + formatDate(groupReservation.date) +
+                ' alle ' + groupReservation.time + ': annullala per dividerlo.',
+                'warning'
+            );
+            return;
+        }
+
+        const room = entityLocation('group', group.id).room;
+        const totalSeats = groupSeats(group);
+        const memberLabels = group.memberIds.map(tableLabel).join(', ');
+
+        if (!dissolveGroup(group)) return;
+
         selection = [];
         saveState();
         renderAll();
         toast(
-            'Gruppo diviso: i tavoli ' + group.memberIds.map(tableLabel).join(', ') +
+            'Gruppo diviso: i tavoli ' + memberLabels +
             ' tornano singoli (' + totalSeats + ' posti totali, ' + room.name + ').',
             'success'
         );
@@ -2519,6 +2641,7 @@
     function startMoveMode() {
         assigningReservationId = null;
         assignSelection = [];
+        selectionFromForm = false;
         if (editReservationId !== null) resetEditState();
 
         moveMode = true;
@@ -2720,6 +2843,7 @@
         if (editReservationId === null) return;
         resetEditState();
         selection = [];
+        selectionFromForm = false;
         renderAll();
         if (isMobileLayout()) setTab('prenotazioni');
         toast('Modifica annullata.', 'info');
@@ -2730,6 +2854,7 @@
         assignSelection = [];
         moveMode = false;
         movePicked = null;
+        selectionFromForm = true;
         renderAll();
 
         if (isMobileLayout()) {
@@ -2746,6 +2871,32 @@
         );
     }
 
+    function onConfirmTables() {
+        if (!selection.length) {
+            toast('Scegli almeno un tavolo nella pianta, poi conferma.', 'info');
+            return;
+        }
+
+        if (isMobileLayout()) {
+            setTab('nuova');
+        } else {
+            const panel = document.getElementById('panelNuova');
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        if (!els.guestName.value.trim()) {
+            window.setTimeout(function () {
+                els.guestName.focus({ preventScroll: true });
+            }, 260);
+        }
+
+        toast(
+            'Tavoli confermati: ' + targetsLabel(selection) + ' · ' + selectionSeats() +
+            ' posti. Completa i dati e crea la prenotazione.',
+            'success'
+        );
+    }
+
     function startEdit(reservationId) {
         const reservation = getReservation(reservationId);
         if (!reservation) return;
@@ -2755,6 +2906,7 @@
         assignSelection = [];
         moveMode = false;
         movePicked = null;
+        selectionFromForm = false;
 
         selection = reservationTargets(reservation).map(function (target) {
             return { kind: target.kind, id: target.id };
@@ -2786,6 +2938,7 @@
 
         assigningReservationId = reservationId;
         assignSelection = [];
+        selectionFromForm = false;
         resetEditState();
         moveMode = false;
         movePicked = null;
@@ -2985,6 +3138,10 @@
             const targetCopies = targets.map(function (target) {
                 return { kind: target.kind, id: target.id };
             });
+            const previousTargets = reservationTargets(editingReservation).map(function (target) {
+                return { kind: target.kind, id: target.id };
+            });
+
             editingReservation.name = name;
             editingReservation.phone = phone;
             editingReservation.guests = guests;
@@ -2994,9 +3151,14 @@
             editingReservation.targets = targetCopies;
             delete editingReservation.target;
 
+            // Un gruppo che questa modifica lascia senza prenotazioni
+            // torna a essere composto dai tavoli singoli.
+            pruneOrphanGroups(previousTargets);
+
             resetEditState();
-            saveState();
             selection = [];
+            selectionFromForm = false;
+            saveState();
             renderAll();
             toast(
                 'Prenotazione di ' + name + ' aggiornata' +
@@ -3031,6 +3193,7 @@
         els.guestCount.value = '';
         els.guestNote.value = '';
         selection = [];
+        selectionFromForm = false;
         renderAll();
         toast(
             targetCopies.length
@@ -3092,9 +3255,16 @@
             assignSelection = [];
         }
 
+        const removedTargets = reservationTargets(reservation).map(function (target) {
+            return { kind: target.kind, id: target.id };
+        });
+
         state.reservations = state.reservations.filter(function (r) {
             return r.id !== reservationId;
         });
+
+        // Se la prenotazione teneva uniti dei tavoli, il gruppo si scioglie.
+        pruneOrphanGroups(removedTargets);
 
         saveState();
         renderAll();
@@ -3112,6 +3282,7 @@
 
             buildFreshState();
             selection = [];
+            selectionFromForm = false;
             moveMode = false;
             movePicked = null;
             assigningReservationId = null;
@@ -4440,6 +4611,18 @@
     function bindEvents() {
         els.date.addEventListener('change', onHeaderSlotChange);
         els.time.addEventListener('change', onHeaderSlotChange);
+
+        if (els.serviceToggle) {
+            els.serviceToggle.addEventListener('click', function (event) {
+                const button = event.target.closest('.service-btn');
+                if (!button) return;
+                onServicePick(button.dataset.service);
+            });
+        }
+
+        if (els.confirmTablesBtn) {
+            els.confirmTablesBtn.addEventListener('click', onConfirmTables);
+        }
 
         els.combineBtn.addEventListener('click', onCombine);
         els.separateBtn.addEventListener('click', onSeparate);

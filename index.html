@@ -13,6 +13,25 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="La Griglia">
+	
+	<!-- FIREBASE SDK VIA CDN (aggiungi QUI, prima di <script src="app.js"></script>) -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+<!-- TUA CONFIGURAZIONE FIREBASE (sostituisci con le tue credenziali) -->
+<script>
+  const firebaseConfig = {
+  apiKey: "AIzaSyAjb5uKktsgqhcTWRGEXLUKXzl26CeIStk",
+  authDomain: "la-griglia-4313e.firebaseapp.com",
+  projectId: "la-griglia-4313e",
+  storageBucket: "la-griglia-4313e.firebasestorage.app",
+  messagingSenderId: "936648697522",
+  appId: "1:936648697522:web:439f107f480bdd7325cbab",
+  };
+</script>
+
+<!-- Script app.js viene caricato in fondo al <body>, dopo i DOM e Firebase -->
+
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -49,6 +68,15 @@
                     <span>Ora</span>
                     <select id="timeInput" aria-label="Orario dello slot"></select>
                 </label>
+                <div class="field-inline service-field">
+                    <span>Servizio</span>
+                    <div class="service-toggle" id="serviceToggle" role="group" aria-label="Servizio da mostrare">
+                        <button type="button" class="service-btn" data-service="pranzo"
+                            aria-pressed="false" title="Mostra le prenotazioni del pranzo (fino alle 16:00)">Pranzo</button>
+                        <button type="button" class="service-btn" data-service="cena"
+                            aria-pressed="false" title="Mostra le prenotazioni della cena (16:00–22:00)">Cena</button>
+                    </div>
+                </div>
             </div>
 
             <div class="topbar-actions">
@@ -144,6 +172,16 @@
 
                 <div class="rooms" id="roomsContainer"></div>
                 <p class="sr-only" id="statusLine" aria-live="polite"></p>
+
+                <div class="plan-confirm" id="planConfirmBar" hidden>
+                    <div class="plan-confirm-info">
+                        <span class="plan-confirm-label">Tavoli scelti</span>
+                        <span class="plan-confirm-value" id="planConfirmText">—</span>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="confirmTablesBtn">
+                        Conferma e torna alla prenotazione
+                    </button>
+                </div>
             </section>
 
             <div class="side">
