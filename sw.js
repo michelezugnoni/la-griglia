@@ -4,7 +4,7 @@
    cache solo l'interfaccia, così l'app si apre anche offline.
    ============================================================ */
 
-const VERSION = 'la-griglia-v1';
+const VERSION = 'la-griglia-v11';
 
 const SHELL = [
     './',
@@ -12,11 +12,11 @@ const SHELL = [
     './style.css',
     './app.js',
     './manifest.webmanifest',
-    './icons/icon-192.png',
-    './icons/icon-512.png',
-    './icons/icon-maskable-512.png',
-    './icons/apple-touch-icon.png',
-    './icons/favicon-32.png'
+    './icon-192.png',
+    './icon-512.png',
+    './icon-maskable-512.png',
+    './apple-touch-icon.png',
+    './favicon-32.png'
 ];
 
 self.addEventListener('install', function (event) {

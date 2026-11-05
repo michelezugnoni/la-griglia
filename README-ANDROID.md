@@ -10,7 +10,7 @@ Non serve rifare nulla: sono gli stessi file `index.html`, `style.css`, `app.js`
 | --- | --- |
 | `manifest.webmanifest` | Nome, icona, colori, avvio a schermo intero |
 | `sw.js` | Service worker: mette in cache l'interfaccia per l'uso offline |
-| `icons/*.png` | Icone 192/512 px, maskable, apple-touch, favicon |
+| `icon-*.png`, `apple-touch-icon.png`, `favicon-32.png` | Icone PWA nella root (non in `icons/`) |
 | `index.html` | Meta tag PWA, icona, pulsante **Installa app** |
 | `app.js` | Registrazione del service worker + gestione del pulsante Installa |
 | `style.css` | Aree sicure (notch/barra gesti) e stile del pulsante Installa |

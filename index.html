@@ -7,8 +7,8 @@
     <meta name="description" content="Gestione di tavoli, sale e prenotazioni del ristorante La Griglia, con funzionamento offline.">
     <title>Rifugio Roccoli Lorla · Gestione prenotazioni</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -29,7 +29,7 @@
 
         <header class="topbar">
             <div class="brand">
-                <img src="icons/logo-rifugio.png" alt="Rifugio Roccoli Lorla" class="brand-logo" aria-hidden="true">
+                <img src="logo-rifugio.png" alt="Rifugio Roccoli Lorla" class="brand-logo" aria-hidden="true">
                 <div>
                     <h1>Rifugio Roccoli Lorla</h1>
                     <p>Gestione prenotazioni</p>
@@ -59,7 +59,7 @@
             <div class="topbar-actions">
                 <button type="button" class="btn btn-install" id="installBtn" hidden>Installa app</button>
                 <button type="button" class="btn btn-print" id="printBtn" title="Stampa la pianta della sala con le prenotazioni oppure solo l'elenco delle prenotazioni">
-                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
                         stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M7 9V4h10v5"></path>
                         <rect x="4" y="9" width="16" height="7" rx="1.8"></rect>
@@ -69,6 +69,7 @@
                     Stampa
                 </button>
                 <button type="button" class="btn btn-ghost" id="resetBtn">Ripristina sala</button>
+                <span id="cloud-sync-badge" class="cloud-badge" aria-live="polite">☁️ Cloud sincronizzato</span>
             </div>
         </header>
 
@@ -167,21 +168,22 @@
                 <p class="panel-sub slot-label" id="slotLabel">—</p>
 
                 <form id="reservationForm" novalidate>
-                    <div class="field-row">
-                        <div class="field">
-                            <label for="formDate">Data</label>
-                            <input type="date" id="formDate" aria-describedby="formDateHint">
-                            <p class="field-error" id="formDateError"></p>
+                    <!-- Data e orario si scelgono dalla barra in alto: campi tenuti solo per la logica -->
+                    <div class="form-slot-extra" hidden>
+                        <div class="field-row">
+                            <div class="field">
+                                <label for="formDate">Data</label>
+                                <input type="date" id="formDate" aria-describedby="formDateHint">
+                                <p class="field-error" id="formDateError"></p>
+                            </div>
+                            <div class="field">
+                                <label for="formTime">Ora</label>
+                                <select id="formTime" aria-describedby="formTimeHint"></select>
+                                <p class="field-error" id="formTimeError"></p>
+                            </div>
                         </div>
-                        <div class="field">
-                            <label for="formTime">Ora</label>
-                            <select id="formTime" aria-describedby="formTimeHint"></select>
-                            <p class="field-error" id="formTimeError"></p>
-                        </div>
+                        <p class="form-hint" id="formDateHint">Scegli data e orario dai menu, oppure usa i selettori in alto.</p>
                     </div>
-                    <p class="form-hint" id="formDateHint">Scegli data e orario dai menu, oppure usa i selettori in alto.</p>
-
-                    <div class="target" id="targetInfo" aria-live="polite"></div>
 
                     <div class="field">
                         <label for="guestName">Nome e cognome</label>
@@ -205,6 +207,8 @@
                         <label for="guestNote">Note <span class="optional">(facoltative)</span></label>
                         <input type="text" id="guestNote" placeholder="Allergie, seggiolone, compleanno…">
                     </div>
+
+                    <div class="target" id="targetInfo" aria-live="polite"></div>
 
                     <button type="button" class="btn btn-select-table btn-block" id="selectTableBtn">
                         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
@@ -302,7 +306,6 @@
         </div>
     </div>
 
-    <div id="cloud-sync-badge" class="cloud-badge" aria-live="polite"></div>
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
 
     <noscript>

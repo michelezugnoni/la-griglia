@@ -377,11 +377,9 @@
         }
         setDefaultSlot();
 
-        // Su mobile: apri direttamente su "Nuove prenotazioni" con servizio pranzo
+        // Su mobile: apri direttamente sulla tab "Nuove prenotazioni"
         if (isMobileLayout()) {
             activeTab = 'nuova';
-            setTimeValue(els.time, '12:30');
-            onHeaderSlotChange();
         }
         bindEvents();
         bindTabs();
