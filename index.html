@@ -13,13 +13,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Rifugio Roccoli Lorla">
+	
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="app">
         <header class="print-header" id="printHeader" aria-hidden="true">
             <div class="print-brand">
-                <span class="print-title">Rifugio Roccoli Lorla</span>
+                <span class="print-title">La Griglia</span>
                 <span class="print-doc" id="printDocTitle">Pianta della sala</span>
             </div>
             <p class="print-slot" id="printSlotLine">—</p>
@@ -28,7 +29,7 @@
 
         <header class="topbar">
             <div class="brand">
-                <img src="logo-rifugio.png" alt="Rifugio Roccoli Lorla" class="brand-logo" aria-hidden="true">
+                <img src="icons/logo-rifugio.png" alt="Rifugio Roccoli Lorla" class="brand-logo" aria-hidden="true">
                 <div>
                     <h1>Rifugio Roccoli Lorla</h1>
                     <p>Gestione prenotazioni</p>
@@ -56,6 +57,7 @@
             </div>
 
             <div class="topbar-actions">
+                <button type="button" class="btn btn-install" id="installBtn" hidden>Installa app</button>
                 <button type="button" class="btn btn-print" id="printBtn" title="Stampa la pianta della sala con le prenotazioni oppure solo l'elenco delle prenotazioni">
                     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
                         stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -67,7 +69,6 @@
                     Stampa
                 </button>
                 <button type="button" class="btn btn-ghost" id="resetBtn">Ripristina sala</button>
-                <span id="cloud-sync-badge" class="cloud-badge"></span>
             </div>
         </header>
 
@@ -301,6 +302,7 @@
         </div>
     </div>
 
+    <div id="cloud-sync-badge" class="cloud-badge" aria-live="polite"></div>
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
 
     <noscript>
